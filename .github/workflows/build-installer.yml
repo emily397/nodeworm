@@ -22,8 +22,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Restore or generate the extension signing key.
-      # The PEM is stored as a GitHub secret so the extension ID stays stable.
       - name: Restore extension key
         shell: pwsh
         run: |
@@ -31,7 +29,7 @@ jobs:
             [System.IO.File]::WriteAllText("extension-key.pem", "${{ secrets.EXTENSION_KEY_PEM }}")
             Write-Host "Extension key restored from secret."
           } else {
-            Write-Host "No secret found; a fresh key (new extension ID) will be generated."
+            Write-Host "No secret found; a fresh key will be generated."
           }
 
       - name: Pack Chrome extension (CRX3)
@@ -40,17 +38,19 @@ jobs:
       - name: Compile NodeWorm Agent (Node SEA -> standalone exe)
         shell: pwsh
         run: |
-          # Node.js Single Executable Applications (stable since Node 21, works on 22/24)
           '{"main":"public/agent/nodeworm-agent.js","output":"sea-prep.blob","disableExperimentalSEAWarning":true}' | Out-File sea-config.json -Encoding UTF8
           node --experimental-sea-config sea-config.json
           Copy-Item (Get-Command node).Source installer/nodeworm-agent.exe -Force
           npx postject installer/nodeworm-agent.exe NODE_SEA_BLOB sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 --overwrite
 
+      - name: Copy standalone agent for release
+        shell: pwsh
+        run: Copy-Item installer/nodeworm-agent.exe nodeworm-agent.exe
+
       - name: Install NSIS
         shell: pwsh
         run: |
           choco install nsis --no-progress -y
-          # Add NSIS to PATH for subsequent steps
           Add-Content $env:GITHUB_PATH "C:\Program Files (x86)\NSIS"
 
       - name: Build installer EXE
@@ -70,10 +70,18 @@ jobs:
           path: installer/NodeWorm-Setup.exe
           retention-days: 30
 
-      # On version tags, create a GitHub Release with the installer attached.
+      - name: Upload standalone agent artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nodeworm-agent
+          path: nodeworm-agent.exe
+          retention-days: 30
+
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: installer/NodeWorm-Setup.exe
+          files: |
+            installer/NodeWorm-Setup.exe
+            nodeworm-agent.exe
           generate_release_notes: true

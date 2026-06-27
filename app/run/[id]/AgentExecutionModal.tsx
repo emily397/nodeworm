@@ -6,9 +6,8 @@ import type { ExecuteTask, ExecutionPlan, SignedPlanEnvelope } from "@/lib/engin
 type Phase = "checking" | "not-installed" | "preview" | "running" | "done" | "error";
 type StepState = { status?: string; title?: string; detail?: string; output?: string; qr?: string; humanPrompt?: string };
 
-// The agentic-execution surface: pings the locally-installed NodeWorm Agent, shows
-// the EXACT signed commands for approval, then streams the Agent's step-by-step
-// progress as it sets the connector up hands-off. The user only scans the QR.
+const AGENT_WS = "ws://localhost:39742";
+
 export function AgentExecutionModal({
   integrationId,
   appName,
@@ -23,45 +22,42 @@ export function AgentExecutionModal({
   const [envelope, setEnvelope] = useState<SignedPlanEnvelope | null>(null);
   const [steps, setSteps] = useState<Record<number, StepState>>({});
   const [msg, setMsg] = useState<string | null>(null);
-  const execListener = useRef<((e: MessageEvent) => void) | null>(null);
-  const gotEvent = useRef(false);
-  const execTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const wsRef = useRef<WebSocket | null>(null);
 
-  // Ping the locally-installed Agent: post nw_agent_ping, resolve on the pong (or a
-  // 1.8s timeout = not installed / extension not reloaded).
-  function pingAgent(onResult: (installed: boolean) => void) {
+  function connectAgent(onResult: (ws: WebSocket | null) => void) {
     let done = false;
-    const onMsg = (e: MessageEvent) => {
-      if (e.source !== window || !e.data || e.data.type !== "nw_agent_pong") return;
-      done = true;
-      window.removeEventListener("message", onMsg);
-      onResult(Boolean(e.data.installed));
-    };
-    window.addEventListener("message", onMsg);
-    window.postMessage({ type: "nw_agent_ping" }, origin);
-    setTimeout(() => { if (!done) { window.removeEventListener("message", onMsg); onResult(false); } }, 1800);
+    let ws: WebSocket;
+    try { ws = new WebSocket(AGENT_WS); } catch { onResult(null); return; }
+    const timeout = setTimeout(() => { if (!done) { done = true; ws.close(); onResult(null); } }, 2500);
+    ws.addEventListener("open", () => { ws.send(JSON.stringify({ type: "nw_ping" })); });
+    ws.addEventListener("message", (e) => {
+      try {
+        const m = JSON.parse(e.data as string);
+        if (m.type === "nw_pong" && !done) { done = true; clearTimeout(timeout); onResult(ws); }
+      } catch (_) {}
+    });
+    const fail = () => { if (!done) { done = true; clearTimeout(timeout); onResult(null); } };
+    ws.addEventListener("error", fail);
+    ws.addEventListener("close", fail);
   }
 
-  // Re-check after the user installs / reloads. Only proceeds to the plan when the
-  // Agent actually answers, so we never sit on a plan the Agent can't run.
   function recheck() {
     setPhase("checking");
-    pingAgent((installed) => {
-      if (installed) void loadPlan();
+    connectAgent((ws) => {
+      if (ws) { wsRef.current = ws; void loadPlan(); }
       else {
-        setMsg("Still can't reach the NodeWorm Agent. Make sure you ran the installer and restarted your browser. If the extension isn't visible in Chrome, go to chrome://extensions and check it is enabled.");
+        setMsg("Still can't reach the NodeWorm Agent. Make sure you ran the installer and it started in the background.");
         setPhase("not-installed");
       }
     });
   }
 
   useEffect(() => {
-    pingAgent((installed) => { if (installed) void loadPlan(); else setPhase("not-installed"); });
-    return () => {
-      if (execListener.current) window.removeEventListener("message", execListener.current);
-      if (execTimeout.current) clearTimeout(execTimeout.current);
-    };
+    connectAgent((ws) => {
+      if (ws) { wsRef.current = ws; void loadPlan(); }
+      else setPhase("not-installed");
+    });
+    return () => { wsRef.current?.close(); wsRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -82,27 +78,28 @@ export function AgentExecutionModal({
 
   function approve() {
     if (!envelope) return;
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      setMsg("Agent disconnected. Click re-check and try again.");
+      setPhase("error");
+      return;
+    }
     setPhase("running");
-    gotEvent.current = false;
-    const onMsg = (e: MessageEvent) => {
-      if (e.source !== window || !e.data || e.data.type !== "nw_agent_event") return;
-      if (!gotEvent.current) {
-        gotEvent.current = true;
-        if (execTimeout.current) clearTimeout(execTimeout.current);
-      }
-      handleEvent(e.data.event);
-    };
-    execListener.current = onMsg;
-    window.addEventListener("message", onMsg);
-    window.postMessage({ type: "nw_agent_execute", envelope }, origin);
-    // If the Agent sends nothing, it is not actually connected (extension not
-    // reloaded, or host not registered). Fail loudly instead of hanging on QUEUED.
-    execTimeout.current = setTimeout(() => {
-      if (!gotEvent.current) {
-        setMsg("The NodeWorm Agent didn't respond. Restart your browser to ensure the extension is fully loaded, then try again.");
+    let gotFirst = false;
+    const timeout = setTimeout(() => {
+      if (!gotFirst) {
+        setMsg("The NodeWorm Agent didn't respond. Restart your machine and try again.");
         setPhase("error");
       }
     }, 8000);
+    ws.addEventListener("message", function onMsg(e) {
+      let ev: Record<string, unknown>;
+      try { ev = JSON.parse(e.data as string); } catch { return; }
+      if (!gotFirst) { gotFirst = true; clearTimeout(timeout); }
+      if (ev.type === "nw_done") ws.removeEventListener("message", onMsg);
+      handleEvent(ev);
+    });
+    ws.send(JSON.stringify({ type: "nw_execute", envelope }));
   }
 
   function handleEvent(ev: Record<string, unknown>) {
@@ -126,7 +123,7 @@ export function AgentExecutionModal({
   }
 
   function abort() {
-    window.postMessage({ type: "nw_agent_control", control: { type: "abort" } }, origin);
+    wsRef.current?.send(JSON.stringify({ type: "nw_abort" }));
     setMsg("Aborted.");
     setPhase("error");
   }
@@ -160,24 +157,13 @@ export function AgentExecutionModal({
               approve the exact commands. It never types your password.
             </p>
             <ol className="space-y-2.5">
-              {(process.env.NEXT_PUBLIC_EXTENSION_URL ? [
-                // Chrome Web Store path: installer + manual "Add to Chrome" + restart
+              {[
                 <a key="dl" href="/api/agent/installer" download="NodeWorm-Agent-Installer.cmd" className="btn btn-signal text-sm w-full justify-center">
-                  1-click: download the Agent installer
+                  Download the NodeWorm Agent installer
                 </a>,
-                <span key="run">Double-click <b>NodeWorm-Agent-Installer.cmd</b> (installs in seconds, no admin). If Windows warns, choose More info, Run anyway.</span>,
-                <a key="ext" href={process.env.NEXT_PUBLIC_EXTENSION_URL} target="_blank" rel="noopener noreferrer" className="btn btn-signal text-sm w-full justify-center">
-                  Add NodeWorm Helper to Chrome
-                </a>,
-                <span key="restart">Restart your browser, then click re-check below.</span>,
-              ] : [
-                // Pre-CWS path: installer auto-installs the extension via policy on restart
-                <a key="dl" href="/api/agent/installer" download="NodeWorm-Agent-Installer.cmd" className="btn btn-signal text-sm w-full justify-center">
-                  1-click: download the Agent installer
-                </a>,
-                <span key="run">Double-click <b>NodeWorm-Agent-Installer.cmd</b> (installs in seconds, no admin). If Windows warns, choose More info, Run anyway.</span>,
-                <span key="restart">Restart Chrome or Edge. The NodeWorm Helper extension installs itself automatically.</span>,
-              ]).map((node, i) => (
+                <span key="run">Double-click <b>NodeWorm-Agent-Installer.cmd</b>. If Windows shows a warning, click <b>More info</b> then <b>Run anyway</b>. The agent installs and starts in seconds.</span>,
+                <span key="done">Come back here and click re-check below.</span>,
+              ].map((node, i) => (
                 <li key={i} className="flex items-center gap-2.5">
                   <span
                     className="font-mono text-[0.62rem] shrink-0 grid place-items-center rounded-full"
@@ -189,10 +175,10 @@ export function AgentExecutionModal({
                 </li>
               ))}
             </ol>
+            {msg && <p className="text-[0.66rem]" style={{ color: "var(--color-signal-2)" }}>{msg}</p>}
             <button onClick={recheck} className="btn btn-ink text-sm w-full justify-center">I installed it, re-check</button>
             <p className="text-[0.6rem]" style={{ color: "var(--color-muted)" }}>
-              Needs Docker Desktop running. This local route is only for self-hosting on your own machine; connecting an
-              app for someone else needs no install at all. macOS/Linux:{" "}
+              Needs Docker Desktop running. macOS/Linux:{" "}
               <a href="/agent/install.command" download className="underline">installer</a>. Remove anytime:{" "}
               <a href="/agent/uninstall.cmd" download className="underline">uninstall</a>.
             </p>
@@ -211,7 +197,7 @@ export function AgentExecutionModal({
               </div>
             </div>
             <div>
-              <div className="font-mono text-[0.56rem] uppercase tracking-wider mb-1" style={{ color: "var(--color-muted)" }}>what you’ll be asked to do</div>
+              <div className="font-mono text-[0.56rem] uppercase tracking-wider mb-1" style={{ color: "var(--color-muted)" }}>what you&apos;ll be asked to do</div>
               <ul className="text-[0.72rem] list-disc pl-4 space-y-0.5" style={{ color: "var(--color-ink-soft)" }}>
                 {plan.humanActions.map((h: string, i: number) => <li key={i}>{h}</li>)}
               </ul>

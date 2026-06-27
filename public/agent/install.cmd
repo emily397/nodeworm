@@ -1,10 +1,27 @@
 @echo off
 title NodeWorm Agent installer
-echo Installing the NodeWorm Agent (current user, no admin needed)...
+echo Installing the NodeWorm Agent...
 echo.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $base='https://abie-three.vercel.app'; $dir=Join-Path $env:LOCALAPPDATA 'NodeWormAgent'; New-Item -ItemType Directory -Force -Path $dir | Out-Null; Invoke-WebRequest -UseBasicParsing -Uri ($base+'/agent/nodeworm-agent.js') -OutFile (Join-Path $dir 'nodeworm-agent.js'); $js=Join-Path $dir 'nodeworm-agent.js'; $bat='@echo off'+[char]13+[char]10+'node '+[char]34+$js+[char]34+[char]13+[char]10; Set-Content -Path (Join-Path $dir 'nodeworm-agent.bat') -Value $bat -Encoding ascii -NoNewline; $extId='lflebkjggclmnaokfmfnjgbdpfdkajpj'; $m=[ordered]@{name='com.nodeworm.executor';description='NodeWorm Agent native messaging host';path=(Join-Path $dir 'nodeworm-agent.bat');type='stdio';allowed_origins=@('chrome-extension://'+$extId+'/')}; ($m | ConvertTo-Json) | Set-Content -Path (Join-Path $dir 'com.nodeworm.executor.json') -Encoding UTF8; foreach($r in @('HKCU:\Software\Google\Chrome\NativeMessagingHosts\com.nodeworm.executor','HKCU:\Software\Microsoft\Edge\NativeMessagingHosts\com.nodeworm.executor')){ New-Item -Path $r -Force | Out-Null; Set-ItemProperty -Path $r -Name '(Default)' -Value (Join-Path $dir 'com.nodeworm.executor.json') }; $updateUrl=$extId+';'+$base+'/agent/updates.xml'; foreach($r in @('HKCU:\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist','HKCU:\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist')){ New-Item -Path $r -Force | Out-Null; Set-ItemProperty -Path $r -Name '1' -Value $updateUrl }; if(-not (Get-Command node -ErrorAction SilentlyContinue)){ Write-Host 'WARNING: Node.js was not found on PATH. Install Node.js (nodejs.org), then run this again.' -ForegroundColor Yellow }; Write-Host ('NodeWorm Agent installed to '+$dir) -ForegroundColor Green; Write-Host 'Restart Chrome or Edge and the NodeWorm Helper extension will be added automatically.' -ForegroundColor Cyan"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ErrorActionPreference='Stop';" ^
+  "$dir=Join-Path $env:LOCALAPPDATA 'NodeWormAgent';" ^
+  "New-Item -ItemType Directory -Force -Path $dir | Out-Null;" ^
+  "$exe=Join-Path $dir 'nodeworm-agent.exe';" ^
+  "Write-Host 'Downloading NodeWorm Agent (this may take a moment)...' -ForegroundColor Cyan;" ^
+  "try {" ^
+    "Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/emily397/nodeworm/releases/latest/download/nodeworm-agent.exe' -OutFile $exe;" ^
+  "} catch {" ^
+    "Write-Host ('Download failed: '+$_.Exception.Message) -ForegroundColor Red;" ^
+    "Write-Host 'Check your internet connection and try again.' -ForegroundColor Yellow;" ^
+    "pause; exit 1" ^
+  "};" ^
+  "Unblock-File -Path $exe;" ^
+  "Write-Host 'Starting NodeWorm Agent in background...' -ForegroundColor Cyan;" ^
+  "Start-Process -FilePath $exe -WindowStyle Hidden;" ^
+  "New-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'NodeWormAgent' -Value $exe -PropertyType String -Force | Out-Null;" ^
+  "Write-Host 'Done! NodeWorm Agent is running.' -ForegroundColor Green;" ^
+  "Write-Host 'Go back to NodeWorm and click re-check.' -ForegroundColor Cyan"
 echo.
-echo Done. Restart your browser. The NodeWorm Helper extension will install itself automatically.
-echo Then click "I installed it, re-check" in NodeWorm.
+echo NodeWorm Agent installed. Go back to NodeWorm and click "I installed it, re-check".
 echo.
 pause
