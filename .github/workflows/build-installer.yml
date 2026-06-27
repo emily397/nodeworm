@@ -37,13 +37,14 @@ jobs:
       - name: Pack Chrome extension (CRX3)
         run: node scripts/pack-crx.js
 
-      - name: Compile NodeWorm Agent (pkg -> standalone exe)
+      - name: Compile NodeWorm Agent (Node SEA -> standalone exe)
+        shell: pwsh
         run: |
-          npx pkg public/agent/nodeworm-agent.js ^
-            --target node20-win-x64 ^
-            --output installer/nodeworm-agent.exe ^
-            --compress GZip
-        shell: cmd
+          # Node.js Single Executable Applications (stable since Node 21, works on 22/24)
+          '{"main":"public/agent/nodeworm-agent.js","output":"sea-prep.blob","disableExperimentalSEAWarning":true}' | Out-File sea-config.json -Encoding UTF8
+          node --experimental-sea-config sea-config.json
+          Copy-Item (Get-Command node).Source installer/nodeworm-agent.exe -Force
+          npx postject installer/nodeworm-agent.exe NODE_SEA_BLOB sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 --overwrite
 
       - name: Install NSIS
         run: choco install nsis --no-progress -y
