@@ -1,0 +1,27 @@
+# Public entrypoint for the NodeWorm Signal bridge.
+# {$BRIDGE_TOKEN} is substituted before the Caddyfile is parsed (it comes from
+# the Fly secret of the same name). Fly terminates TLS at its edge and forwards
+# plain HTTP to this listener on :8080, so Caddy serves HTTP here (no certs).
+
+{
+	# No automatic HTTPS or certs inside the machine; Fly's edge does TLS.
+	auto_https off
+	# Lock down the admin API; nothing here needs it.
+	admin off
+}
+
+:8080 {
+	# Health check is exempt from auth so Fly (and uptime checks) can probe it.
+	@health path /v1/health
+	reverse_proxy @health 127.0.0.1:8081
+
+	# Authorized iff the Authorization header EXACTLY equals our Bearer token.
+	# Exact string match; matchers in a set are AND'ed; `not` negates the whole set.
+	@unauthorized not header Authorization "Bearer {$BRIDGE_TOKEN}"
+	respond @unauthorized "Unauthorized" 401 {
+		close
+	}
+
+	# Everything else carried the right token: forward to signal-cli-rest-api.
+	reverse_proxy 127.0.0.1:8081
+}

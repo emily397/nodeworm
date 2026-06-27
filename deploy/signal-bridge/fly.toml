@@ -1,0 +1,53 @@
+# NodeWorm hosted Signal bridge. One Fly Machine runs BOTH:
+#   - Caddy (public HTTPS entrypoint on :8080, enforces the Bearer token)
+#   - bbernhard/signal-cli-rest-api (private, on 127.0.0.1:8081)
+# One machine, one volume, no process groups. The bbernhard entrypoint must
+# start as root (usermod/groupmod/chown, then setpriv to drop to uid 1000), and
+# the device link lives on a single volume that can only attach to one machine.
+# Splitting Caddy and the API across two machines would race on auto-stop and
+# break linking, so they are co-located.
+
+app = "nodeworm-signal-bridge"
+primary_region = "syd"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # signal-cli-rest-api config dir. MUST be set or the entrypoint aborts.
+  SIGNAL_CLI_CONFIG_DIR = "/home/.local/share/signal-cli"
+  # 'native' just works on first deploy for link + send + GET /v1/accounts and
+  # needs no supervisor. Upgrade to 'json-rpc-native' later for real-time receive.
+  MODE = "native"
+  # The API listens privately here. Caddy owns the public 8080.
+  PORT = "8081"
+
+# Persistent volume so the device link survives restarts and redeploys. The link
+# state (keys, account registration) is written under SIGNAL_CLI_CONFIG_DIR.
+[[mounts]]
+  source = "signal_data"
+  destination = "/home/.local/share/signal-cli"
+
+# Public HTTPS service. Fly terminates TLS at the edge and forwards to Caddy on
+# internal_port 8080. Caddy 401s anything without the correct Bearer token.
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Keep the bridge warm. A stopped machine cannot answer the QR-link poll and
+  # the device-link handshake is time sensitive, so min 1 machine and no auto-stop.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "get"
+    # Caddy passes /v1/health through untouched (exempt from token auth), so this
+    # check proves BOTH Caddy and the API are alive.
+    path = "/v1/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "30s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

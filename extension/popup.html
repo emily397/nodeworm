@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NodeWorm Helper</title>
+    <style>
+      :root {
+        --ink: #15120d;
+        --card: #1f1b14;
+        --line: #322b20;
+        --paper: #f4eee1;
+        --muted: #b8b0a2;
+        --teal: #2dd4bf;
+        --signal: #ff7a47;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; }
+      body {
+        width: 320px;
+        background: radial-gradient(120% 100% at 30% 0%, #221d15 0%, var(--ink) 70%);
+        color: var(--paper);
+        font: 13px/1.5 system-ui, -apple-system, Segoe UI, sans-serif;
+        padding: 16px;
+      }
+      .head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+      .head img { width: 34px; height: 34px; border-radius: 9px; }
+      .head h1 { font-size: 15px; margin: 0; font-weight: 800; letter-spacing: -0.01em; }
+      .head p { margin: 1px 0 0; font-size: 11px; color: var(--muted); }
+      .row {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        padding: 12px;
+        margin-bottom: 10px;
+      }
+      .row .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 6px; }
+      .row .state { font-weight: 700; }
+      .state.ok { color: var(--teal); }
+      .state.muted { color: var(--muted); }
+      .desc { font-size: 11px; color: var(--muted); margin: 6px 0 10px; }
+      button {
+        width: 100%;
+        border: 0;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font: 600 12px system-ui, sans-serif;
+        cursor: pointer;
+        background: var(--teal);
+        color: var(--ink);
+      }
+      button.off { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+      .foot { font-size: 10px; color: var(--muted); text-align: center; margin-top: 4px; }
+      .foot a { color: var(--teal); text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <div class="head">
+      <img src="icons/icon128.png" alt="NodeWorm" />
+      <div>
+        <h1>NodeWorm Helper</h1>
+        <p>Companion to the NodeWorm app</p>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="label">NodeWorm Agent</div>
+      <div id="agent" class="state muted">Checking…</div>
+    </div>
+
+    <div class="row">
+      <div class="label">Advanced automation</div>
+      <div id="adv" class="state muted">Checking…</div>
+      <div class="desc">
+        Lets the Helper fill OAuth redirect URIs on provider portals and check connectors on your own
+        machine. Off by default; only needed for those advanced flows. The everyday flows (sign-in,
+        QR-link, OAuth) never use it.
+      </div>
+      <button id="advBtn" disabled>…</button>
+    </div>
+
+    <div class="foot">Works only on <a href="https://abie-three.vercel.app" target="_blank" rel="noreferrer">NodeWorm</a>.</div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

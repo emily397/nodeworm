@@ -1,0 +1,69 @@
+name: Build NodeWorm Installer
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Restore or generate the extension signing key.
+      # The PEM is stored as a GitHub secret so the extension ID stays stable.
+      - name: Restore extension key
+        shell: pwsh
+        run: |
+          if ("${{ secrets.EXTENSION_KEY_PEM }}" -ne "") {
+            [System.IO.File]::WriteAllText("extension-key.pem", "${{ secrets.EXTENSION_KEY_PEM }}")
+            Write-Host "Extension key restored from secret."
+          } else {
+            Write-Host "No secret found; a fresh key (new extension ID) will be generated."
+          }
+
+      - name: Pack Chrome extension (CRX3)
+        run: node scripts/pack-crx.js
+
+      - name: Compile NodeWorm Agent (pkg -> standalone exe)
+        run: |
+          npx pkg public/agent/nodeworm-agent.js ^
+            --target node20-win-x64 ^
+            --output installer/nodeworm-agent.exe ^
+            --compress GZip
+        shell: cmd
+
+      - name: Install NSIS
+        run: choco install nsis --no-progress -y
+
+      - name: Build installer EXE
+        working-directory: installer
+        run: makensis setup.nsi
+        shell: cmd
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NodeWorm-Setup
+          path: installer/NodeWorm-Setup.exe
+          retention-days: 30
+
+      # On version tags, create a GitHub Release with the installer attached.
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installer/NodeWorm-Setup.exe
+          generate_release_notes: true

@@ -1,0 +1,35 @@
+{
+  "_comment": "DEV-ONLY manifest. Identical to manifest.json but keeps the stable-ID 'key' so unpacked loads as dalghcagdbckejfmdgfheoaaecmbpnog (the ID the NodeWorm Agent native-host allowlist references). The STORE build (manifest.json) drops 'key' because the Web Store assigns its own ID. To load unpacked for dev: copy manifest.dev.json over manifest.json (or load a copy of the folder with this as manifest.json). Do NOT ship this file in the store zip.",
+  "manifest_version": 3,
+  "name": "NodeWorm Helper",
+  "version": "0.3.0",
+  "description": "Connects your apps in NodeWorm: fills the OAuth redirect URI on a provider portal, checks local connectors, and relays signed setup plans.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnXNc+vxHDstO68JIodBtceMj0mxZ5NtdMylOJ4g2J0RpeMkR8s8cNH80y49xnZCoSYKxd8wmn/v6EslLI1hm4MTFz5Zt5pygSH2AgEYmX/3hwNETewYQ3qHLLp75GxtEhJLnmYyhqlunu83iJ9dIEB4W8eQ6oDAvfwaoRXX6/kE5wBmqNRBI6xBIFE9muVleurXEPLIUpjVbHBKJPfGnTVGK7WxpdrGw3eE7MfIUOQB+/Tv6ZAkOkiKITEW6W1KLtUZItJoAWVd62dhPVkHHEvsX4o1hYUeWEBLJnFQx8tEpjmi2dabz0g4S6+S2wpb5Sf+mG2HFCkr7JOdP/sJHfQIDAQAB",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "NodeWorm Helper",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "permissions": ["storage", "scripting", "nativeMessaging"],
+  "host_permissions": ["http://localhost:3000/*", "https://abie-three.vercel.app/*"],
+  "optional_host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost:3000/*", "https://abie-three.vercel.app/*"],
+      "js": ["content-nodeworm.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
