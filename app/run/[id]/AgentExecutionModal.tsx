@@ -23,7 +23,10 @@ export function AgentExecutionModal({
   const [steps, setSteps] = useState<Record<number, StepState>>({});
   const [msg, setMsg] = useState<string | null>(null);
   const [dockerOk, setDockerOk] = useState<boolean | null>(null);
+  const [copied, setCopied] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+
+  const installCmd = 'powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://abie-three.vercel.app/agent/install.ps1 | iex"';
 
   function connectAgent(onResult: (ws: WebSocket | null) => void) {
     let done = false;
@@ -159,15 +162,25 @@ export function AgentExecutionModal({
             </p>
             <ol className="space-y-2.5">
               {[
-                <a key="dl" href="/api/agent/installer" download="NodeWorm-Agent-Installer.cmd" className="btn btn-signal text-sm w-full justify-center">
-                  Download the NodeWorm Agent installer
-                </a>,
-                <span key="run">Double-click <b>NodeWorm-Agent-Installer.cmd</b>. If Windows shows a warning, click <b>More info</b> then <b>Run anyway</b>. The agent installs and starts in seconds.</span>,
+                <span key="open">Press <b>Win</b>, type <b>PowerShell</b>, open it.</span>,
+                <div key="cmd" className="space-y-1.5">
+                  <span>Paste this line, press Enter (installs in seconds, no admin):</span>
+                  <div className="rounded p-2 font-mono text-[0.58rem] break-all relative" style={{ background: "var(--color-ink)", color: "var(--color-paper)" }}>
+                    {installCmd}
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(installCmd); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+                      className="absolute top-1 right-1 font-mono text-[0.52rem] uppercase px-1.5 py-0.5 rounded"
+                      style={{ background: "var(--color-signal)", color: "var(--color-ink)" }}
+                    >
+                      {copied ? "copied" : "copy"}
+                    </button>
+                  </div>
+                </div>,
                 <span key="done">Come back here and click re-check below.</span>,
               ].map((node, i) => (
-                <li key={i} className="flex items-center gap-2.5">
+                <li key={i} className="flex items-start gap-2.5">
                   <span
-                    className="font-mono text-[0.62rem] shrink-0 grid place-items-center rounded-full"
+                    className="font-mono text-[0.62rem] shrink-0 grid place-items-center rounded-full mt-0.5"
                     style={{ width: 18, height: 18, color: "var(--color-live)", border: "1px solid var(--color-live)" }}
                   >
                     {i + 1}
