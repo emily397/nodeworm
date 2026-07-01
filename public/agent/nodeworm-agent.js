@@ -11,7 +11,7 @@ const http = require("http");
 const os = require("os");
 const path = require("path");
 
-const VERSION = "2.1.0";
+const VERSION = "2.2.0";
 const PORT = 39742;
 const PUBLIC_KEY_ID = "nw-exec-ed25519-1";
 const PUBLIC_KEY_B64 = "MCowBQYDK2VwAyEA0gSYkfXv72byhI08OkQIelEEB/5xEYj0VPzb5OtRDHQ=";
@@ -163,7 +163,9 @@ function createSession(socket) {
     if (!msg || typeof msg !== "object") return;
     switch (msg.type) {
       case "nw_ping":
-        runCmd(["docker", "--version"], 8000).then((r) =>
+        // `docker info` (not `--version`) requires the daemon to be running,
+        // so this catches "Docker installed but Desktop not started".
+        runCmd(["docker", "info", "--format", "{{.ServerVersion}}"], 8000).then((r) =>
           send({ type: "nw_pong", version: VERSION, publicKeyId: PUBLIC_KEY_ID, dockerOk: r.ok })
         );
         break;
