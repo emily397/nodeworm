@@ -22,6 +22,7 @@ export function AgentExecutionModal({
   const [envelope, setEnvelope] = useState<SignedPlanEnvelope | null>(null);
   const [steps, setSteps] = useState<Record<number, StepState>>({});
   const [msg, setMsg] = useState<string | null>(null);
+  const [dockerOk, setDockerOk] = useState<boolean | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   function connectAgent(onResult: (ws: WebSocket | null) => void) {
@@ -33,7 +34,7 @@ export function AgentExecutionModal({
     ws.addEventListener("message", (e) => {
       try {
         const m = JSON.parse(e.data as string);
-        if (m.type === "nw_pong" && !done) { done = true; clearTimeout(timeout); onResult(ws); }
+        if (m.type === "nw_pong" && !done) { done = true; clearTimeout(timeout); setDockerOk(m.dockerOk !== false); onResult(ws); }
       } catch (_) {}
     });
     const fail = () => { if (!done) { done = true; clearTimeout(timeout); onResult(null); } };
@@ -205,9 +206,15 @@ export function AgentExecutionModal({
             {plan.warnings.map((w: string, i: number) => (
               <p key={i} className="text-[0.66rem]" style={{ color: "var(--color-muted)" }}>{w}</p>
             ))}
+            {dockerOk === false && (
+              <div className="rounded p-2.5 text-[0.72rem]" style={{ background: "var(--color-paper-2)", border: "1px solid var(--color-signal-2)", color: "var(--color-ink-soft)" }}>
+                <b style={{ color: "var(--color-signal-2)" }}>Docker Desktop isn&apos;t running.</b> This connector runs in Docker.{" "}
+                <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener noreferrer" className="underline">Install Docker Desktop</a>, start it, then re-open this.
+              </div>
+            )}
             <div className="flex gap-2">
               <button onClick={onClose} className="btn text-sm flex-1 justify-center" style={{ border: "1px solid var(--color-line-2)" }}>Cancel</button>
-              <button onClick={approve} className="btn btn-signal text-sm flex-1 justify-center">Approve &amp; run</button>
+              <button onClick={approve} disabled={dockerOk === false} className="btn btn-signal text-sm flex-1 justify-center" style={dockerOk === false ? { opacity: 0.5, cursor: "not-allowed" } : undefined}>Approve &amp; run</button>
             </div>
           </div>
         )}
