@@ -1,0 +1,79 @@
+name: Provision hosted bridge
+
+# Autonomous runner for the hosted-connector pattern: stand up a "scan-one-QR"
+# bridge for any app that has a containerized connector (Signal, WhatsApp, ...).
+# Dispatch with the app + its connector image; the job deploys a HF Docker Space
+# behind a bearer gate and (if a Vercel token is set) wires it into NodeWorm.
+#
+# One-time secrets on the repo:
+#   HF_TOKEN                (required) Hugging Face write token
+#   VERCEL_TOKEN            (optional) to auto-set the *_BRIDGE_URL/TOKEN env
+#   VERCEL_ORG_ID / VERCEL_PROJECT_ID (optional, with VERCEL_TOKEN)
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "App slug (e.g. signal, whatsapp)"
+        required: true
+      image:
+        description: "Connector Docker image (e.g. bbernhard/signal-cli-rest-api:latest)"
+        required: true
+      upstream_port:
+        description: "Connector internal port"
+        required: false
+        default: "8080"
+      upstream_start:
+        description: "Command to launch the connector (blank = image default entrypoint path)"
+        required: false
+        default: "/entrypoint.sh"
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Provision the bridge Space
+        id: provision
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          APP: ${{ inputs.app }}
+          IMAGE: ${{ inputs.image }}
+          UPSTREAM_PORT: ${{ inputs.upstream_port }}
+          UPSTREAM_START: ${{ inputs.upstream_start }}
+        run: |
+          if [ -z "${HF_TOKEN:-}" ]; then echo "::error::HF_TOKEN secret not set"; exit 1; fi
+          BRIDGE_TOKEN="$(openssl rand -hex 24)"
+          echo "::add-mask::$BRIDGE_TOKEN"
+          export BRIDGE_TOKEN
+          bash scripts/provision-bridge.sh
+          UP="$(echo "${APP}" | tr '[:lower:]' '[:upper:]')"
+          echo "bridge_url=https://emward-nodeworm-${APP}-bridge.hf.space" >> "$GITHUB_OUTPUT"
+          echo "url_env=${UP}_BRIDGE_URL" >> "$GITHUB_OUTPUT"
+          echo "token_env=${UP}_BRIDGE_TOKEN" >> "$GITHUB_OUTPUT"
+          echo "bridge_token=$BRIDGE_TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Wire into NodeWorm (Vercel), if VERCEL_TOKEN is set
+        if: ${{ secrets.VERCEL_TOKEN != '' }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npm i -g vercel >/dev/null 2>&1
+          for pair in "${{ steps.provision.outputs.url_env }}:${{ steps.provision.outputs.bridge_url }}" \
+                      "${{ steps.provision.outputs.token_env }}:${{ steps.provision.outputs.bridge_token }}"; do
+            name="${pair%%:*}"; val="${pair#*:}"
+            vercel env rm "$name" production --token "$VERCEL_TOKEN" --yes >/dev/null 2>&1 || true
+            printf '%s' "$val" | vercel env add "$name" production --token "$VERCEL_TOKEN" >/dev/null 2>&1 || true
+          done
+          echo "Wired ${{ steps.provision.outputs.url_env }} into NodeWorm. Redeploy to activate."
+
+      - name: Summary
+        run: |
+          echo "### Hosted bridge provisioned" >> "$GITHUB_STEP_SUMMARY"
+          echo "- App: ${{ inputs.app }} (${{ inputs.image }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Space: https://huggingface.co/spaces/emward/nodeworm-${{ inputs.app }}-bridge" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Bridge URL: ${{ steps.provision.outputs.bridge_url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "If VERCEL_TOKEN was set, the *_BRIDGE_URL/TOKEN env are already set; redeploy NodeWorm." >> "$GITHUB_STEP_SUMMARY"

@@ -21,10 +21,19 @@ export interface HostedConnectorSpec {
   tokenEnv?: string; // optional bearer the operator set on the bridge
   deviceName: string; // device_name shown in the app's linked-devices list
   qrPath: string; // GET -> device-link QR (png or { uri })
-  accountsPath: string; // GET -> string[] of linked numbers (non-empty = linked)
+  accountsPath: string; // GET -> linked-account signal (see `linked`)
+  linked?: "accounts-nonempty" | "session-working"; // how accountsPath proves a link (default accounts-nonempty)
   consentGated: boolean; // messaging bridges always require explicit user consent
+  // ---- provisioning blueprint (used by the provision workflow, not at runtime) ----
+  image?: string; // the connector Docker image the bridge wraps
+  upstreamPort?: number; // the port the connector listens on inside the container (default 8080)
+  upstreamStart?: string; // command that launches the connector in the background (default /entrypoint.sh)
+  verified?: boolean; // true once a real link has been proven end-to-end for this blueprint
 }
 
+// A hosted bridge is one blueprint per app family. Adding a new "scan-one-QR" app
+// is a single entry here + one run of the provision workflow (.github/workflows/
+// provision-bridge.yml) that stands up its Space and hands back the URL to key.
 const SIGNAL: HostedConnectorSpec = {
   kind: "rest-wrapper",
   name: "Signal bridge (signal-cli-rest-api)",
@@ -34,10 +43,36 @@ const SIGNAL: HostedConnectorSpec = {
   deviceName: "NodeWorm",
   qrPath: "/v1/qrcodelink",
   accountsPath: "/v1/accounts",
+  linked: "accounts-nonempty",
   consentGated: true,
+  image: "bbernhard/signal-cli-rest-api:latest",
+  upstreamPort: 8080,
+  upstreamStart: "/entrypoint.sh",
+  verified: true,
 };
 
-const SPECS: HostedConnectorSpec[] = [SIGNAL];
+// WhatsApp via WAHA (devlikeapro/waha): a dockerized WhatsApp HTTP API with QR
+// login. Inert until WHATSAPP_BRIDGE_URL is keyed. Endpoints are best-effort and
+// marked unverified: run the provision workflow + a real link before relying on it.
+// NOTE: automating WhatsApp Web risks account bans (Meta ToS); operator opt-in only.
+const WHATSAPP: HostedConnectorSpec = {
+  kind: "rest-wrapper",
+  name: "WhatsApp bridge (WAHA)",
+  apps: ["whatsapp"],
+  urlEnv: "WHATSAPP_BRIDGE_URL",
+  tokenEnv: "WHATSAPP_BRIDGE_TOKEN",
+  deviceName: "NodeWorm",
+  qrPath: "/api/default/auth/qr?format=image",
+  accountsPath: "/api/sessions",
+  linked: "session-working",
+  consentGated: true,
+  image: "devlikeapro/waha:latest",
+  upstreamPort: 3000,
+  upstreamStart: "", // WAHA's own image entrypoint runs it; supervisor uses the image default
+  verified: false,
+};
+
+const SPECS: HostedConnectorSpec[] = [SIGNAL, WHATSAPP];
 
 const norm = (s: string) => s.trim().toLowerCase();
 
@@ -80,7 +115,8 @@ export async function fetchLinkQr(
 ): Promise<{ ok: true; qrDataUrl?: string; qrUri?: string } | { ok: false; error: string }> {
   const base = hostedBaseUrl(spec);
   if (!base) return { ok: false, error: `${spec.name} is not configured (set ${spec.urlEnv}).` };
-  const url = `${base}${spec.qrPath}?device_name=${encodeURIComponent(spec.deviceName)}`;
+  const sep = spec.qrPath.includes("?") ? "&" : "?";
+  const url = `${base}${spec.qrPath}${sep}device_name=${encodeURIComponent(spec.deviceName)}`;
   try {
     const r = await fetch(url, { headers: authHeaders(hostedToken(spec)), cache: "no-store", signal: AbortSignal.timeout(20000) });
     if (!r.ok) return { ok: false, error: `Bridge returned HTTP ${r.status} for the link QR.` };
@@ -107,6 +143,13 @@ export async function pollLinkedNumber(spec: HostedConnectorSpec): Promise<strin
     const r = await fetch(`${base}${spec.accountsPath}`, { headers: authHeaders(hostedToken(spec)), cache: "no-store", signal: AbortSignal.timeout(10000) });
     if (!r.ok) return undefined;
     const data: unknown = await r.json();
+    // session-working: an array of sessions, linked when one is "WORKING" (WAHA-style).
+    if (spec.linked === "session-working") {
+      const sessions: Array<{ name?: string; status?: string; me?: { id?: string } }> = Array.isArray(data) ? data : [];
+      const live = sessions.find((s) => String(s.status).toUpperCase() === "WORKING");
+      return live ? String(live.me?.id ?? live.name ?? "linked") : undefined;
+    }
+    // accounts-nonempty (default): an array of account ids, linked when non-empty.
     const list: unknown[] = Array.isArray(data)
       ? data
       : Array.isArray((data as { accounts?: unknown[] })?.accounts)
@@ -116,4 +159,18 @@ export async function pollLinkedNumber(spec: HostedConnectorSpec): Promise<strin
   } catch {
     return undefined;
   }
+}
+
+// Blueprints that carry enough to be auto-provisioned by the provision workflow.
+export function provisionableBlueprints(): Array<{ app: string; name: string; image: string; upstreamPort: number; upstreamStart: string; urlEnv: string; tokenEnv?: string; verified: boolean }> {
+  return SPECS.filter((s) => s.image).map((s) => ({
+    app: s.apps[0],
+    name: s.name,
+    image: s.image!,
+    upstreamPort: s.upstreamPort ?? 8080,
+    upstreamStart: s.upstreamStart ?? "/entrypoint.sh",
+    urlEnv: s.urlEnv,
+    tokenEnv: s.tokenEnv,
+    verified: Boolean(s.verified),
+  }));
 }
