@@ -13,6 +13,9 @@ export type TaskKind =
   | "verify" // a check probe, no side effects
   | "link-qr" // fetch a device-link QR from the local connector, show it, poll until linked
   | "manual" // a pure human step (scan a QR, approve), the Agent only waits
+  | "signal-start" // start the bundled native signal-cli daemon (no Docker)
+  | "signal-link" // startLink -> show QR -> finishLink (blocks until phone scans)
+  | "signal-verify" // listAccounts on the linked native connector
   | "capture-session"; // spawn a capture process that opens a browser; Agent shows a prompt and
                        // polls captureReadyUrl until the tool signals completion, then continues
 

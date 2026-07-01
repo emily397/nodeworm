@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import QRCode from "qrcode";
 import type { ExecuteTask, ExecutionPlan, SignedPlanEnvelope } from "@/lib/engine/execute/types";
 
 type Phase = "checking" | "not-installed" | "preview" | "running" | "done" | "error";
@@ -22,7 +23,6 @@ export function AgentExecutionModal({
   const [envelope, setEnvelope] = useState<SignedPlanEnvelope | null>(null);
   const [steps, setSteps] = useState<Record<number, StepState>>({});
   const [msg, setMsg] = useState<string | null>(null);
-  const [dockerOk, setDockerOk] = useState<boolean | null>(null);
   const [copied, setCopied] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -38,7 +38,6 @@ export function AgentExecutionModal({
       try {
         const m = JSON.parse(e.data as string);
         if (m.type === "nw_pong" && !done) { done = true; clearTimeout(timeout); onResult(ws); }
-        else if (m.type === "nw_docker") { setDockerOk(m.dockerOk !== false); }
       } catch (_) {}
     });
     const fail = () => { if (!done) { done = true; clearTimeout(timeout); onResult(null); } };
@@ -114,7 +113,14 @@ export function AgentExecutionModal({
     } else if (ev.type === "nw_output" && n != null) {
       setSteps((s) => ({ ...s, [n]: { ...s[n], output: ((s[n]?.output ?? "") + (ev.line as string)).slice(-2000) } }));
     } else if (ev.type === "nw_qr" && n != null) {
-      setSteps((s) => ({ ...s, [n]: { ...s[n], qr: ev.qrDataUrl as string } }));
+      const uri = (ev.linkUri as string) ?? (ev.qrDataUrl as string);
+      if (ev.qrDataUrl) {
+        setSteps((s) => ({ ...s, [n]: { ...s[n], qr: ev.qrDataUrl as string } }));
+      } else if (uri) {
+        QRCode.toDataURL(uri, { width: 220, margin: 2 }).then((dataUrl) =>
+          setSteps((s) => ({ ...s, [n]: { ...s[n], qr: dataUrl } }))
+        ).catch(() => {});
+      }
     } else if (ev.type === "nw_done") {
       if (ev.ok) {
         setMsg(ev.callbackOk ? "Connected." : "Setup complete, finishing up…");
@@ -203,14 +209,23 @@ export function AgentExecutionModal({
         {phase === "preview" && plan && (
           <div className="space-y-3">
             <p className="text-sm" style={{ color: "var(--color-ink-soft)" }}>{plan.summary}</p>
-            <div>
-              <div className="font-mono text-[0.56rem] uppercase tracking-wider mb-1" style={{ color: "var(--color-muted)" }}>commands NodeWorm will run (in Docker)</div>
-              <div className="rounded p-3 font-mono text-[0.62rem] space-y-1" style={{ background: "var(--color-ink)", color: "var(--color-paper)" }}>
-                {cmds.map((t: ExecuteTask) => (
-                  <div key={t.n}>$ {(t.command ?? []).join(" ")}</div>
-                ))}
+            {cmds.length > 0 ? (
+              <div>
+                <div className="font-mono text-[0.56rem] uppercase tracking-wider mb-1" style={{ color: "var(--color-muted)" }}>commands NodeWorm will run</div>
+                <div className="rounded p-3 font-mono text-[0.62rem] space-y-1" style={{ background: "var(--color-ink)", color: "var(--color-paper)" }}>
+                  {cmds.map((t: ExecuteTask) => (
+                    <div key={t.n}>$ {(t.command ?? []).join(" ")}</div>
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div>
+                <div className="font-mono text-[0.56rem] uppercase tracking-wider mb-1" style={{ color: "var(--color-muted)" }}>what NodeWorm will do</div>
+                <ol className="text-[0.72rem] list-decimal pl-4 space-y-0.5" style={{ color: "var(--color-ink-soft)" }}>
+                  {plan.tasks.map((t: ExecuteTask) => <li key={t.n}>{t.title}</li>)}
+                </ol>
+              </div>
+            )}
             <div>
               <div className="font-mono text-[0.56rem] uppercase tracking-wider mb-1" style={{ color: "var(--color-muted)" }}>what you&apos;ll be asked to do</div>
               <ul className="text-[0.72rem] list-disc pl-4 space-y-0.5" style={{ color: "var(--color-ink-soft)" }}>
@@ -220,15 +235,9 @@ export function AgentExecutionModal({
             {plan.warnings.map((w: string, i: number) => (
               <p key={i} className="text-[0.66rem]" style={{ color: "var(--color-muted)" }}>{w}</p>
             ))}
-            {dockerOk === false && (
-              <div className="rounded p-2.5 text-[0.72rem]" style={{ background: "var(--color-paper-2)", border: "1px solid var(--color-signal-2)", color: "var(--color-ink-soft)" }}>
-                <b style={{ color: "var(--color-signal-2)" }}>Docker Desktop isn&apos;t running.</b> This connector runs in Docker.{" "}
-                <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener noreferrer" className="underline">Install Docker Desktop</a>, start it, then re-open this.
-              </div>
-            )}
             <div className="flex gap-2">
               <button onClick={onClose} className="btn text-sm flex-1 justify-center" style={{ border: "1px solid var(--color-line-2)" }}>Cancel</button>
-              <button onClick={approve} disabled={dockerOk === false} className="btn btn-signal text-sm flex-1 justify-center" style={dockerOk === false ? { opacity: 0.5, cursor: "not-allowed" } : undefined}>Approve &amp; run</button>
+              <button onClick={approve} className="btn btn-signal text-sm flex-1 justify-center">Approve &amp; run</button>
             </div>
           </div>
         )}

@@ -5,13 +5,14 @@
 // Private Network Access (PNA) preflight handled via OPTIONS HTTP.
 
 const { createPublicKey, verify, createHash } = require("crypto");
-const { execFile } = require("child_process");
-const { appendFileSync, mkdirSync } = require("fs");
+const { execFile, spawn } = require("child_process");
+const { appendFileSync, mkdirSync, existsSync } = require("fs");
 const http = require("http");
+const net = require("net");
 const os = require("os");
 const path = require("path");
 
-const VERSION = "2.3.0";
+const VERSION = "3.0.0";
 const PORT = 39742;
 const PUBLIC_KEY_ID = "nw-exec-ed25519-1";
 const PUBLIC_KEY_B64 = "MCowBQYDK2VwAyEA0gSYkfXv72byhI08OkQIelEEB/5xEYj0VPzb5OtRDHQ=";
@@ -28,6 +29,85 @@ const AUDIT = path.join(AGENT_DIR, "audit.log");
 try { mkdirSync(AGENT_DIR, { recursive: true }); } catch (_) {}
 function audit(obj) {
   try { appendFileSync(AUDIT, JSON.stringify({ t: new Date().toISOString(), ...obj }) + "\n"); } catch (_) {}
+}
+
+// ---- bundled Signal runtime (native, no Docker) ----
+// The installer places signal-cli + a JRE next to the agent exe under ./bin.
+// We spawn ONLY these bundled binaries; the signed plan can trigger the flow
+// but never names an arbitrary executable.
+const IS_WIN = process.platform === "win32";
+const RUNTIME_DIR = process.env.NODEWORM_RUNTIME_DIR || path.join(path.dirname(process.execPath), "bin");
+const SIGNAL_HOME = path.join(RUNTIME_DIR, "signal-cli");
+const JAVA_HOME = path.join(RUNTIME_DIR, "jre");
+const SIGNAL_CLI = path.join(SIGNAL_HOME, "bin", "signal-cli") + (IS_WIN ? ".bat" : "");
+const SIGNAL_DATA = path.join(AGENT_DIR, "signal-data");
+
+function signalRuntimePresent() {
+  return existsSync(SIGNAL_CLI) && existsSync(JAVA_HOME);
+}
+
+function signalEnv() {
+  return { ...process.env, JAVA_HOME, PATH: `${path.join(JAVA_HOME, "bin")}${path.delimiter}${process.env.PATH || ""}` };
+}
+
+function findFreePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.on("error", reject);
+    srv.listen(0, "127.0.0.1", () => { const p = srv.address().port; srv.close(() => resolve(p)); });
+  });
+}
+
+let signalProc = null;
+let signalPort = 0;
+
+function startSignalDaemon() {
+  return new Promise((resolve, reject) => {
+    if (signalProc) { resolve(); return; }
+    findFreePort().then((port) => {
+      signalPort = port;
+      mkdirSync(SIGNAL_DATA, { recursive: true });
+      const args = ["--data-dir", IS_WIN ? `"${SIGNAL_DATA}"` : SIGNAL_DATA, "daemon", "--http", `127.0.0.1:${port}`];
+      // Node refuses to spawn a .bat without shell:true; quote the path under shell.
+      signalProc = spawn(IS_WIN ? `"${SIGNAL_CLI}"` : SIGNAL_CLI, args, { env: signalEnv(), shell: IS_WIN, windowsHide: true });
+      signalProc.stdout && signalProc.stdout.on("data", () => {});
+      signalProc.stderr && signalProc.stderr.on("data", () => {});
+      signalProc.on("exit", () => { signalProc = null; });
+      signalProc.on("error", (e) => { signalProc = null; reject(e); });
+      resolve();
+    }).catch(reject);
+  });
+}
+
+function signalRpc(method, params, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ jsonrpc: "2.0", method, params: params || {}, id: Date.now() });
+    const req = http.request({
+      hostname: "127.0.0.1", port: signalPort, path: "/api/v1/rpc", method: "POST",
+      timeout: timeoutMs || 30000,
+      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) },
+    }, (res) => {
+      let data = "";
+      res.on("data", (c) => (data += c));
+      res.on("end", () => {
+        try { const p = JSON.parse(data); if (p.error) reject(new Error(p.error.message)); else resolve(p.result); }
+        catch (e) { reject(e); }
+      });
+    });
+    req.on("timeout", () => req.destroy(new Error("signal-cli RPC timed out")));
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+// Poll a cheap RPC until the daemon accepts requests (Java cold start is 30-90s).
+async function signalDaemonReady() {
+  for (let i = 0; i < 120; i++) {
+    try { await signalRpc("version", {}, 5000); return true; } catch (_) { await sleep(1000); }
+  }
+  return false;
 }
 
 // ---- WebSocket framing (RFC 6455) ----
@@ -163,14 +243,7 @@ function createSession(socket) {
     if (!msg || typeof msg !== "object") return;
     switch (msg.type) {
       case "nw_ping":
-        // Answer immediately so the client's liveness check never waits on Docker.
-        send({ type: "nw_pong", version: VERSION, publicKeyId: PUBLIC_KEY_ID });
-        // `docker info` (not `--version`) requires the daemon, so it catches
-        // "Docker installed but Desktop not started". It can block for seconds
-        // when the daemon is down, so it must NOT gate the pong above.
-        runCmd(["docker", "info", "--format", "{{.ServerVersion}}"], 8000).then((r) =>
-          send({ type: "nw_docker", dockerOk: r.ok })
-        );
+        send({ type: "nw_pong", version: VERSION, publicKeyId: PUBLIC_KEY_ID, runtimeOk: signalRuntimePresent() });
         break;
       case "nw_abort":
         aborted = true;
@@ -233,6 +306,47 @@ function createSession(socket) {
         steps.push({ n: task.n, ok: linked.ok, detail: linked.ok ? `${linked.number} linked` : "link timed out" });
         send({ type: "nw_step", n: task.n, status: linked.ok ? "done" : "error" });
         if (!linked.ok && task.criticalPath) { send({ type: "nw_done", ok: false, detail: "Device link timed out." }); return; }
+      } else if (task.kind === "signal-start") {
+        send({ type: "nw_step", n: task.n, status: "running", title: task.title });
+        if (!signalRuntimePresent()) {
+          send({ type: "nw_step", n: task.n, status: "error", detail: "Signal runtime not installed. Re-run the installer." });
+          send({ type: "nw_done", ok: false, detail: "Signal runtime missing." });
+          return;
+        }
+        try { await startSignalDaemon(); } catch (e) {
+          send({ type: "nw_step", n: task.n, status: "error", detail: String((e && e.message) || e) });
+          send({ type: "nw_done", ok: false, detail: "Could not start the Signal connector." });
+          return;
+        }
+        const ready = await signalDaemonReady();
+        steps.push({ n: task.n, ok: ready, detail: ready ? "connector up" : "connector did not start" });
+        send({ type: "nw_step", n: task.n, status: ready ? "done" : "error" });
+        if (!ready) { send({ type: "nw_done", ok: false, detail: "Signal connector did not start in time." }); return; }
+      } else if (task.kind === "signal-link") {
+        send({ type: "nw_step", n: task.n, status: "waiting", title: task.title, humanPrompt: task.humanPrompt });
+        let uri = null;
+        try { const r = await signalRpc("startLink", {}, 15000); uri = r && r.deviceLinkUri; } catch (_) {}
+        if (!uri) {
+          send({ type: "nw_step", n: task.n, status: "error", detail: "Could not get a link code." });
+          send({ type: "nw_done", ok: false, detail: "Signal link failed to start." });
+          return;
+        }
+        send({ type: "nw_qr", n: task.n, linkUri: uri });
+        let linked = null;
+        try { linked = await signalRpc("finishLink", { deviceLinkUri: uri, deviceName: "NodeWorm" }, task.timeoutMs || 300000); }
+        catch (_) { linked = null; }
+        const number = linked && (linked.number || linked.account);
+        steps.push({ n: task.n, ok: Boolean(number), detail: number ? `${number} linked` : "link timed out" });
+        send({ type: "nw_step", n: task.n, status: number ? "done" : "error" });
+        if (!number && task.criticalPath) { send({ type: "nw_done", ok: false, detail: "Device link timed out." }); return; }
+      } else if (task.kind === "signal-verify") {
+        send({ type: "nw_step", n: task.n, status: "running", title: task.title });
+        let ok = false;
+        try { const accts = await signalRpc("listAccounts", {}, 10000); ok = Array.isArray(accts) ? accts.length > 0 : Boolean(accts); } catch (_) {}
+        if (ok) connectorReachable = true;
+        steps.push({ n: task.n, ok, detail: ok ? "live" : "not reachable" });
+        send({ type: "nw_step", n: task.n, status: ok ? "done" : "error" });
+        if (!ok && task.criticalPath) { send({ type: "nw_done", ok: false, detail: "Connector not reachable." }); return; }
       } else if (task.kind === "manual") {
         send({ type: "nw_step", n: task.n, status: "waiting", title: task.title, humanPrompt: task.humanPrompt });
         await new Promise((res) => { humanResolver = res; });
