@@ -11,7 +11,7 @@ const http = require("http");
 const os = require("os");
 const path = require("path");
 
-const VERSION = "2.2.0";
+const VERSION = "2.3.0";
 const PORT = 39742;
 const PUBLIC_KEY_ID = "nw-exec-ed25519-1";
 const PUBLIC_KEY_B64 = "MCowBQYDK2VwAyEA0gSYkfXv72byhI08OkQIelEEB/5xEYj0VPzb5OtRDHQ=";
@@ -163,10 +163,13 @@ function createSession(socket) {
     if (!msg || typeof msg !== "object") return;
     switch (msg.type) {
       case "nw_ping":
-        // `docker info` (not `--version`) requires the daemon to be running,
-        // so this catches "Docker installed but Desktop not started".
+        // Answer immediately so the client's liveness check never waits on Docker.
+        send({ type: "nw_pong", version: VERSION, publicKeyId: PUBLIC_KEY_ID });
+        // `docker info` (not `--version`) requires the daemon, so it catches
+        // "Docker installed but Desktop not started". It can block for seconds
+        // when the daemon is down, so it must NOT gate the pong above.
         runCmd(["docker", "info", "--format", "{{.ServerVersion}}"], 8000).then((r) =>
-          send({ type: "nw_pong", version: VERSION, publicKeyId: PUBLIC_KEY_ID, dockerOk: r.ok })
+          send({ type: "nw_docker", dockerOk: r.ok })
         );
         break;
       case "nw_abort":

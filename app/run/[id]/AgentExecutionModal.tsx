@@ -37,7 +37,8 @@ export function AgentExecutionModal({
     ws.addEventListener("message", (e) => {
       try {
         const m = JSON.parse(e.data as string);
-        if (m.type === "nw_pong" && !done) { done = true; clearTimeout(timeout); setDockerOk(m.dockerOk !== false); onResult(ws); }
+        if (m.type === "nw_pong" && !done) { done = true; clearTimeout(timeout); onResult(ws); }
+        else if (m.type === "nw_docker") { setDockerOk(m.dockerOk !== false); }
       } catch (_) {}
     });
     const fail = () => { if (!done) { done = true; clearTimeout(timeout); onResult(null); } };
