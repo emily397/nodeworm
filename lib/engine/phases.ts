@@ -270,13 +270,16 @@ export function architect(
   // bridge keyed in env), the user only LINKS once (scans a QR); NodeWorm runs the
   // connector. That beats asking them to self-host, so it wins over researched-
   // connector whenever it is available and the method is a hostable wrapper/CLI.
-  const hostable = best && (best.kind === "rest-wrapper" || best.kind === "cli");
-  const useHosted = Boolean(best && hostable && opts?.hostedConnector);
-  const primaryMethod: ArchitectPlan["connectMethod"] = best
-    ? useHosted
-      ? "hosted-connector"
-      : "researched-connector"
-    : baseMethod;
+  // NodeWorm runs a hosted bridge for this app (opts.hostedConnector is set only
+  // when a bridge spec exists for the app AND its env is keyed). That is a genuine
+  // zero-install path (user scans one QR), so it wins over asking the user to
+  // self-host, regardless of what kind of method the Pathfinder ranked best.
+  const bridgeHosted = Boolean(opts?.hostedConnector);
+  const primaryMethod: ArchitectPlan["connectMethod"] = bridgeHosted
+    ? "hosted-connector"
+    : best
+      ? "researched-connector"
+      : baseMethod;
 
   // Self-repair: the chosen method plus its viable fallbacks, in preference order.
   // When a method fails downstream (verify fails, no hosted browser, connector
@@ -307,14 +310,14 @@ export function architect(
         : connectMethod === "managed-session"
           ? "managed-session"
           : "live";
-  if (connectMethod === "hosted-connector" && best) {
+  if (connectMethod === "hosted-connector") {
     notes.push(
-      `${d.appName} has no browser login, so NodeWorm hosts the connector for you (${best.name}). Your only step is to link your account once by scanning a QR code in ${d.appName}; NodeWorm holds the link encrypted and drives it. You install and configure nothing.`,
+      `${d.appName} has no browser login, so NodeWorm hosts the connector for you. Your only step is to link your account once by scanning a QR code in ${d.appName}; NodeWorm holds the link encrypted and drives it. You install and configure nothing.`,
     );
     notes.push(
       `A hosted bridge reads and sends on your ${d.appName} account for the actions you connect, so linking it needs your explicit consent.`,
     );
-    tel.push({ level: "action", text: `No web login for ${d.appName}. NodeWorm hosts ${best.name}; you link via QR.` });
+    tel.push({ level: "action", text: `No web login for ${d.appName}. NodeWorm hosts the connector; you link via QR.` });
   } else if (connectMethod === "researched-connector" && best) {
     if (d.noWebClient) {
       notes.push(
@@ -375,16 +378,16 @@ export function architect(
   return {
     path,
     pathLabel:
-      connectMethod === "hosted-connector" && best
-        ? `Hosted bridge: ${best.name}`
+      connectMethod === "hosted-connector"
+        ? `NodeWorm-hosted bridge`
         : connectMethod === "researched-connector" && best
           ? `Researched connector: ${best.name}`
           : connectMethod === "managed-session"
             ? "Managed browser session"
             : pathLabel(path, authType),
     pathReason:
-      connectMethod === "hosted-connector" && best
-        ? `${d.appName} has no browser login, so NodeWorm hosts ${best.name} for you. You link once by scanning a QR; NodeWorm runs and drives the connector.`
+      connectMethod === "hosted-connector"
+        ? `${d.appName} has no browser login, so NodeWorm hosts the connector for you. You link once by scanning a QR; NodeWorm runs and drives the connector.`
         : connectMethod === "researched-connector" && best
           ? `${d.appName} has no API or OAuth, but the Pathfinder found a real method: ${best.name}. ${best.summary}`
           : connectMethod === "managed-session"
