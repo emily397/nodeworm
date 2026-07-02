@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getIntegration, saveIntegration } from "@/lib/store";
+import { getOwnedIntegration, saveIntegration } from "@/lib/store";
 import { hostedSpecForApp, hostedBaseUrl, fetchLinkQr } from "@/lib/engine/hosted-connectors";
 
 export const runtime = "nodejs";
@@ -12,7 +12,7 @@ export const maxDuration = 60;
 // The bridge URL and token never reach the client.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const it = await getIntegration(id);
+  const it = await getOwnedIntegration(req, id);
   if (!it) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const spec = hostedSpecForApp(it.appName);

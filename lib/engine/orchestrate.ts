@@ -167,7 +167,7 @@ export async function advance(it: Integration): Promise<Integration> {
     }
     case "present": {
       if (it.discovery && it.plan && it.wire && it.audit) {
-        it.report = report(it.discovery, it.plan, it.wire, it.audit, connectedNow(it), it.research, Boolean(it.connector?.verified));
+        it.report = report(it.discovery, it.plan, it.wire, it.audit, connectedNow(it), it.research, Boolean(it.connector?.verified), Boolean(it.generated));
       }
       break;
     }
@@ -193,7 +193,7 @@ export function recompute(it: Integration): Integration {
   if (it.discovery && it.plan && it.wire) {
     it.audit = auditor(it.discovery, it.plan, it.wire, connectedNow(it));
     if (it.currentPhase >= it.phases.length) {
-      it.report = report(it.discovery, it.plan, it.wire, it.audit, connectedNow(it), it.research, Boolean(it.connector?.verified));
+      it.report = report(it.discovery, it.plan, it.wire, it.audit, connectedNow(it), it.research, Boolean(it.connector?.verified), Boolean(it.generated));
       it.status = it.report.status;
     }
   }
@@ -216,7 +216,7 @@ export function repair(it: Integration): Integration {
   it.connector = undefined;
   it.managedSession = undefined;
   it.audit = auditor(it.discovery, it.plan, it.wire, connectedNow(it));
-  it.report = report(it.discovery, it.plan, it.wire, it.audit, connectedNow(it), it.research, false);
+  it.report = report(it.discovery, it.plan, it.wire, it.audit, connectedNow(it), it.research, false, Boolean(it.generated));
   it.status = it.report.status;
   it.updatedAt = Date.now();
   return it;

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { getIntegration, saveIntegration } from "@/lib/store";
+import { getOwnedIntegration, saveIntegration } from "@/lib/store";
 import { buildAuthorizeUrl, pkcePair, randomState } from "@/lib/engine/oauth";
 import { resolveClient } from "@/lib/engine/recovery/resolve";
+import { popupResult } from "@/lib/engine/oauth-popup";
 import { currentUserId, requireVaultUnlock } from "@/lib/engine/auth";
 
 export const runtime = "nodejs";
@@ -9,11 +10,21 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const it = await getIntegration(id);
+  const it = await getOwnedIntegration(req, id);
   if (!it) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const origin = new URL(req.url).origin;
-  const back = (q: string) => NextResponse.redirect(`${origin}/run/${id}?${q}`);
+  const popup = new URL(req.url).searchParams.get("popup") === "1";
+  // In popup mode a non-authorize outcome (needs PIN, recover, blocked) closes the
+  // popup and reports to the opener; full-page mode redirects to the run page.
+  const back = (q: string) => {
+    if (popup) {
+      const p = new URLSearchParams(q);
+      const outcome = p.get("oauth") === "blocked" ? "blocked" : p.has("recover") ? "recover" : "error";
+      return popupResult(origin, id, outcome, p.get("reason") ?? (p.get("pin") ? "pin required" : undefined));
+    }
+    return NextResponse.redirect(`${origin}/run/${id}?${q}`);
+  };
 
   // PIN gate: a signed-in user who set a vault PIN must unlock before NodeWorm
   // reads or writes their stored credentials. The run page opens the unlock modal
@@ -42,7 +53,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const pkce = r.provider.pkce ? pkcePair() : undefined;
 
   it.recovery = undefined;
-  it.oauth = { state, verifier: pkce?.verifier, redirectUri, startedAt: Date.now() };
+  it.oauth = { state, verifier: pkce?.verifier, redirectUri, startedAt: Date.now(), popup };
   await saveIntegration(it);
 
   const authorizeUrl = buildAuthorizeUrl({

@@ -374,7 +374,7 @@ export interface Integration {
   secrets: SecretRef[];
   // Transient OAuth handshake state, written when the consent redirect starts
   // and cleared once the callback exchanges the code. Never holds a token.
-  oauth?: { state: string; verifier?: string; redirectUri: string; startedAt: number };
+  oauth?: { state: string; verifier?: string; redirectUri: string; startedAt: number; popup?: boolean };
   // Guided "crack it" recipe surfaced when the OAuth client must be registered.
   recovery?: GuidedRecipe;
   // Honest transcript of why each recovery tier was used or degraded.
@@ -445,6 +445,37 @@ export interface Integration {
   // Connect methods that failed (or the user skipped), excluded from re-architecting
   // so self-repair walks down the fallback ladder instead of re-offering a dead end.
   excludedMethods?: ConnectMethod[];
+  // A generated connector bundle (generated-mcp / generated-scraper): real typed
+  // code built from the discovered surface, held here until the user deploys it.
+  generated?: GeneratedBundle;
+}
+
+// ---- Generated connector (generated-mcp / generated-scraper) ---------------
+// A real, typed, deployable MCP server (or Playwright scraper) generated from the
+// app's discovered API surface. Honest status: "generated" until the user deploys
+// it and NodeWorm verifies one real read (then connected-via-connector).
+
+export interface GeneratedFile {
+  path: string;
+  content: string;
+}
+
+// A real operation lifted from the app's own OpenAPI spec (probe-discovered).
+export interface OpenApiOp {
+  method: string;
+  path: string;
+  name: string;
+  summary?: string;
+}
+
+export interface GeneratedBundle {
+  kind: "mcp" | "scraper";
+  connectorName: string;
+  language: "typescript";
+  apiBase?: string;
+  files: GeneratedFile[];
+  deploySteps: string[];
+  generatedAt: number;
 }
 
 // ---- Bridge (app-to-app) --------------------------------------------------
@@ -487,6 +518,16 @@ export interface BridgeReport {
   warnings: string[];
 }
 
+// The user's own parsed automation intent, persisted on a bridge so the trigger +
+// action survive the recompute that reruns on every bridge fetch. Without this the
+// generic entity-paired flow would overwrite what the person actually asked for.
+export interface BridgeWorkflow {
+  summary: string;
+  trigger?: { app: string; event: string };
+  actions: Array<{ app: string; op: string; order: number }>;
+  mappings: Array<{ fromApp: string; fromEntity: string; toApp: string; toEntity: string; fields: FieldMap[] }>;
+}
+
 export interface Bridge {
   id: string;
   createdAt: number;
@@ -498,6 +539,8 @@ export interface Bridge {
   status: BridgeStatus;
   flow?: BridgeFlow;
   report?: BridgeReport;
+  // Set when the bridge came from a plain-language request; reapplied on recompute.
+  workflow?: BridgeWorkflow;
 }
 
 export const PHASE_BLUEPRINT: Omit<Phase, "status">[] = [

@@ -6,7 +6,7 @@
 
 const { createPublicKey, verify, createHash } = require("crypto");
 const { execFile, spawn } = require("child_process");
-const { appendFileSync, mkdirSync, existsSync } = require("fs");
+const { appendFileSync, mkdirSync, existsSync, readFileSync, renameSync, writeFileSync } = require("fs");
 const http = require("http");
 const net = require("net");
 const os = require("os");
@@ -219,6 +219,75 @@ async function linkQr(task, send) {
   return { ok: false };
 }
 
+// ---- cloudflared quick tunnel (zero-account) ----
+// Makes a LOCAL connector cloud-reachable without port-forwarding: a pinned,
+// hash-verified cloudflared binary opens an ephemeral trycloudflare.com tunnel to
+// 127.0.0.1:<port>. The hash is checked before EVERY spawn (not just at download),
+// so a swapped binary never runs. Quick tunnels get a fresh URL each start; the
+// cloud re-verifies reachability itself before claiming anything is connected.
+const CLOUDFLARED_VERSION = "2026.6.1";
+const CLOUDFLARED_SHA256_WIN_X64 = "5253e66f1f493c4e13539749f1aa86fd0c61e3072900fec29a44ba046a6d97e2";
+const CLOUDFLARED_URL = `https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-windows-amd64.exe`;
+const CLOUDFLARED_BIN = path.join(AGENT_DIR, "bin", "cloudflared.exe");
+let tunnelProc = null;
+let tunnelUrl = null;
+
+function sha256File(p) {
+  try { return createHash("sha256").update(readFileSync(p)).digest("hex"); } catch (_) { return ""; }
+}
+
+async function ensureCloudflared() {
+  if (!IS_WIN || process.arch !== "x64") return { ok: false, detail: "Tunnel auto-setup is Windows x64 only for now." };
+  if (sha256File(CLOUDFLARED_BIN) === CLOUDFLARED_SHA256_WIN_X64) return { ok: true };
+  try {
+    mkdirSync(path.dirname(CLOUDFLARED_BIN), { recursive: true });
+    const r = await fetch(CLOUDFLARED_URL, { signal: AbortSignal.timeout(180000), redirect: "follow" });
+    if (!r.ok) return { ok: false, detail: `cloudflared download failed (HTTP ${r.status}).` };
+    const buf = Buffer.from(await r.arrayBuffer());
+    const got = createHash("sha256").update(buf).digest("hex");
+    if (got !== CLOUDFLARED_SHA256_WIN_X64) {
+      audit({ event: "tunnel-hash-mismatch", got });
+      return { ok: false, detail: "cloudflared hash mismatch; refusing to run it." };
+    }
+    const tmp = CLOUDFLARED_BIN + ".tmp";
+    writeFileSync(tmp, buf);
+    renameSync(tmp, CLOUDFLARED_BIN);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, detail: String((e && e.message) || e) };
+  }
+}
+
+function startTunnel(port, timeoutMs) {
+  return new Promise((resolve) => {
+    if (tunnelProc && tunnelUrl) { resolve({ ok: true, url: tunnelUrl }); return; }
+    // Re-verify the binary hash at spawn time, every time.
+    if (sha256File(CLOUDFLARED_BIN) !== CLOUDFLARED_SHA256_WIN_X64) {
+      resolve({ ok: false, detail: "cloudflared binary failed its hash check." });
+      return;
+    }
+    const proc = spawn(CLOUDFLARED_BIN, ["tunnel", "--url", `http://127.0.0.1:${port}`, "--no-autoupdate"], { windowsHide: true, shell: false });
+    let out = "";
+    let done = false;
+    const finish = (res) => { if (!done) { done = true; resolve(res); } };
+    const scan = (c) => {
+      out += c.toString();
+      const m = out.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
+      if (m) { tunnelProc = proc; tunnelUrl = m[0]; audit({ event: "tunnel-up", url: m[0], port }); finish({ ok: true, url: m[0] }); }
+    };
+    proc.stdout && proc.stdout.on("data", scan);
+    proc.stderr && proc.stderr.on("data", scan);
+    proc.on("exit", () => { tunnelProc = null; tunnelUrl = null; finish({ ok: false, detail: "cloudflared exited before the tunnel came up." }); });
+    proc.on("error", (e) => finish({ ok: false, detail: String((e && e.message) || e) }));
+    setTimeout(() => finish({ ok: false, detail: "Tunnel did not come up in time." }), timeoutMs || 45000);
+  });
+}
+
+// Signed plans already executed, keyed by plan.id -> expiresAt. A plan is single-
+// use: without this a valid envelope captured off the wire is replayable for its
+// whole 1h TTL. Evicted lazily once expired.
+const seenPlans = new Map();
+
 function verifyEnvelope(envelope) {
   if (!envelope || envelope.algo !== "ed25519" || !envelope.planJson || !envelope.signature) return null;
   let ok = false;
@@ -228,6 +297,10 @@ function verifyEnvelope(envelope) {
   try { plan = JSON.parse(envelope.planJson); } catch (_) { return null; }
   if (!plan || typeof plan !== "object" || !Array.isArray(plan.tasks)) return null;
   if (typeof plan.expiresAt !== "number" || Date.now() > plan.expiresAt) return null;
+  const now = Date.now();
+  for (const [id, exp] of seenPlans) if (now > exp) seenPlans.delete(id);
+  if (!plan.id || seenPlans.has(plan.id)) return null;
+  seenPlans.set(plan.id, plan.expiresAt);
   return plan;
 }
 
@@ -271,6 +344,7 @@ function createSession(socket) {
 
     const steps = [];
     let connectorReachable = false;
+    let resultTunnelUrl = null;
 
     for (const task of plan.tasks) {
       if (aborted) { send({ type: "nw_done", ok: false, aborted: true, detail: "Aborted." }); return; }
@@ -347,6 +421,35 @@ function createSession(socket) {
         steps.push({ n: task.n, ok, detail: ok ? "live" : "not reachable" });
         send({ type: "nw_step", n: task.n, status: ok ? "done" : "error" });
         if (!ok && task.criticalPath) { send({ type: "nw_done", ok: false, detail: "Connector not reachable." }); return; }
+      } else if (task.kind === "tunnel-start") {
+        send({ type: "nw_step", n: task.n, status: "running", title: task.title });
+        const port = task.tunnelPort;
+        if (!Number.isInteger(port) || port < 1 || port > 65535) {
+          send({ type: "nw_step", n: task.n, status: "error", detail: "Invalid tunnel port." });
+          send({ type: "nw_done", ok: false, detail: "Invalid tunnel port." });
+          return;
+        }
+        const ready = await ensureCloudflared();
+        if (!ready.ok) {
+          steps.push({ n: task.n, ok: false, detail: ready.detail });
+          send({ type: "nw_step", n: task.n, status: "error", detail: ready.detail });
+          send({ type: "nw_done", ok: false, detail: ready.detail });
+          return;
+        }
+        const tun = await startTunnel(port, task.timeoutMs);
+        let proxied = false;
+        if (tun.ok) {
+          // One REAL request through the public URL (out to the edge and back in)
+          // before the tunnel is reported up. Retried: edge routes take a few
+          // seconds to propagate after the URL is printed.
+          const probeUrl = tun.url + ((task.verify && task.verify.url) || "/health");
+          for (let i = 0; i < 15 && !proxied; i++) { proxied = await httpHealth(probeUrl, task.verify && task.verify.expectStatusMax); if (!proxied) await sleep(2000); }
+        }
+        const ok = tun.ok && proxied;
+        if (ok) { connectorReachable = true; resultTunnelUrl = tun.url; }
+        steps.push({ n: task.n, ok, verified: proxied, detail: ok ? `tunnel up: ${tun.url}` : (tun.detail || "tunnel probe failed") });
+        send({ type: "nw_step", n: task.n, status: ok ? "done" : "error", detail: ok ? tun.url : tun.detail });
+        if (!ok && task.criticalPath) { send({ type: "nw_done", ok: false, detail: tun.detail || "Tunnel did not verify." }); return; }
       } else if (task.kind === "manual") {
         send({ type: "nw_step", n: task.n, status: "waiting", title: task.title, humanPrompt: task.humanPrompt });
         await new Promise((res) => { humanResolver = res; });
@@ -360,7 +463,7 @@ function createSession(socket) {
       const r = await fetch(plan.callbackUrl, {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${plan.callbackToken}` },
-        body: JSON.stringify({ result: { planId: plan.id, ok: true, connectorReachable, steps } }),
+        body: JSON.stringify({ result: { planId: plan.id, ok: true, connectorReachable, steps, tunnelUrl: resultTunnelUrl || undefined } }),
         signal: AbortSignal.timeout(15000),
       });
       callbackOk = r.ok;

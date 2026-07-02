@@ -20,6 +20,11 @@ set -euo pipefail
 : "${BRIDGE_TOKEN:?set BRIDGE_TOKEN (must match <APP>_BRIDGE_TOKEN in NodeWorm)}"
 : "${APP:?set APP (e.g. signal)}"
 : "${IMAGE:?set IMAGE (connector docker image)}"
+# Untrusted dispatch inputs: APP reaches SPACE_NAME/REPO/git URL/JSON; IMAGE reaches
+# the Dockerfile FROM. Reject anything outside a strict charset so a value cannot
+# inject Dockerfile directives, shell, or break the JSON.
+[[ "$APP" =~ ^[a-z0-9-]+$ ]] || { echo "APP has invalid chars (allowed: a-z 0-9 -)" >&2; exit 1; }
+[[ "$IMAGE" =~ ^[A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?(@sha256:[a-f0-9]{64})?$ ]] || { echo "IMAGE is not a valid image ref" >&2; exit 1; }
 UPSTREAM_PORT="${UPSTREAM_PORT:-8080}"
 UPSTREAM_START="${UPSTREAM_START:-/entrypoint.sh}"
 HF_USER="${HF_USER:-emward}"

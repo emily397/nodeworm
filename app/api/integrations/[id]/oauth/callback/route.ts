@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { addSecret, getIntegration, saveIntegration } from "@/lib/store";
+import { addSecret, getOwnedIntegration, saveIntegration } from "@/lib/store";
 import { recompute } from "@/lib/engine/orchestrate";
 import { clientCreds, exchangeCode, providerFor, slug } from "@/lib/engine/oauth";
+import { popupResult, type OAuthOutcome } from "@/lib/engine/oauth-popup";
 import { storeTokens } from "@/lib/engine/vault";
 import { currentUserId } from "@/lib/engine/auth";
 
@@ -10,12 +11,22 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const it = await getIntegration(id);
+  const it = await getOwnedIntegration(req, id);
   if (!it) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const origin = new URL(req.url).origin;
   const url = new URL(req.url);
-  const back = (q: string) => NextResponse.redirect(`${origin}/run/${id}?${q}`);
+  // The consent was launched in a popup: every terminal outcome closes the popup and
+  // reports to the opener instead of redirecting a full page.
+  const popup = Boolean(it.oauth?.popup);
+  const back = (q: string) => {
+    if (popup) {
+      const p = new URLSearchParams(q);
+      const outcome: OAuthOutcome = p.get("oauth") === "connected" ? "connected" : "error";
+      return popupResult(origin, id, outcome, p.get("reason") ?? undefined);
+    }
+    return NextResponse.redirect(`${origin}/run/${id}?${q}`);
+  };
 
   const providerError = url.searchParams.get("error");
   if (providerError) return back(`oauth=error&reason=${encodeURIComponent(providerError)}`);

@@ -16,7 +16,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   // Recompute from the live endpoints so the bridge reflects each side's current
   // auth state (a side just authorized flips the bridge toward connected).
   if (source && target) {
-    const { flow, report, status } = buildBridge(source, target);
+    const { flow, report, status } = buildBridge(source, target, bridge.workflow);
     bridge.flow = flow;
     bridge.report = report;
     bridge.status = status;

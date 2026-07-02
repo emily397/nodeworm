@@ -5,9 +5,13 @@ import { currentUserId } from "@/lib/engine/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const uid = await currentUserId(req);
   const all = await listIntegrations();
-  return NextResponse.json({ integrations: all.map(redactIntegration) });
+  // Multi-tenant: a signed-in user sees only their own; anonymous/unkeyed mode
+  // has no owners and stays single-tenant. Never hand another user's ids out.
+  const visible = uid ? all.filter((i) => i.userId === uid) : all.filter((i) => !i.userId);
+  return NextResponse.json({ integrations: visible.map(redactIntegration) });
 }
 
 export async function POST(req: Request) {

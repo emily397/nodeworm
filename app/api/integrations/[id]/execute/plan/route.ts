@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getIntegration, saveIntegration } from "@/lib/store";
+import { getOwnedIntegration, saveIntegration } from "@/lib/store";
 import { buildSignedPlan, executionAvailableFor } from "@/lib/engine/execute/plan";
 
 export const runtime = "nodejs";
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 // Agent running this plan can report the result back.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const it = await getIntegration(id);
+  const it = await getOwnedIntegration(req, id);
   if (!it) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!executionAvailableFor(it.appName, it.research?.best?.kind, it.appUrl)) {
     return NextResponse.json({ error: "Agentic setup is not available for this app." }, { status: 503 });

@@ -44,6 +44,42 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ ok: false, detail: result.detail ?? "Setup did not complete." });
   }
 
+  // Tunnel result: the Agent claims a public URL now fronts the local connector.
+  // Never trusted as-is: the cloud makes its own real GET (SSRF-guarded) and only
+  // records reachable-from-cloud when that succeeds.
+  if (result.tunnelUrl) {
+    if (!/^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(result.tunnelUrl)) {
+      await saveIntegration(it);
+      return NextResponse.json({ ok: false, detail: "Reported tunnel URL is not a trycloudflare.com origin." });
+    }
+    const { verifyConnector } = await import("@/lib/engine/connector");
+    const check = await verifyConnector(result.tunnelUrl, undefined, "cloud");
+    if (!check.ok) {
+      await saveIntegration(it);
+      return NextResponse.json({ ok: false, detail: `Tunnel reported up but the cloud could not reach it: ${check.detail ?? "no response"}.` });
+    }
+    const vsT = vaultStatus();
+    if (vsT.available) {
+      const userId = await currentUserId(req);
+      await storeConnector(it.appName, { connectionId: id, userId }, result.tunnelUrl, undefined);
+    }
+    it.connector = {
+      host: new URL(result.tunnelUrl).host,
+      healthPath: check.path,
+      hasToken: false,
+      reachableFrom: "cloud",
+      private: false,
+      verified: true,
+      verifiedDetail: `${check.detail ?? "verified"} via quick tunnel (ephemeral URL; re-tunnel after restarts)`,
+      verifiedAt: Date.now(),
+      methodName: it.research?.best?.name ?? it.generated?.connectorName ?? "local connector",
+      methodKind: it.research?.best?.kind ?? "rest-wrapper",
+    };
+    recompute(it);
+    await saveIntegration(it);
+    return NextResponse.json({ ok: true, tunnel: true, detail: it.connector.verifiedDetail });
+  }
+
   const recipe = recipeForApp(it.appName);
   const host = `localhost:${recipe?.port ?? 8080}`;
   const url = `http://${host}`;

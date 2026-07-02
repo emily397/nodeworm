@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getIntegration, saveIntegration } from "@/lib/store";
+import { getOwnedIntegration, saveIntegration } from "@/lib/store";
 import { assertConnectorUrl } from "@/lib/engine/connector";
 import { storeConnector, vaultStatus } from "@/lib/engine/vault";
 import { recompute } from "@/lib/engine/orchestrate";
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 // `reachableFrom: "extension"` marks that the proof came from the user's machine.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const it = await getIntegration(id);
+  const it = await getOwnedIntegration(req, id);
   if (!it) return NextResponse.json({ error: "Not found" }, { status: 404 });
   // Allowed both as the primary method (researched-connector) and as the optional
   // advanced alternative under a managed session; both need a found connector.

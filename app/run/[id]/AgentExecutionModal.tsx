@@ -13,10 +13,16 @@ export function AgentExecutionModal({
   integrationId,
   appName,
   onClose,
+  planEndpoint = "execute/plan",
+  heading,
 }: {
   integrationId: string;
   appName: string;
   onClose: () => void;
+  // Which signed-plan route to fetch: setup (execute/plan) or the tunnel plan
+  // (tunnel). Both return { ok, envelope, plan } and run through the same Agent WS.
+  planEndpoint?: string;
+  heading?: string;
 }) {
   const [phase, setPhase] = useState<Phase>("checking");
   const [plan, setPlan] = useState<ExecutionPlan | null>(null);
@@ -68,7 +74,7 @@ export function AgentExecutionModal({
   async function loadPlan() {
     setPhase("checking");
     try {
-      const res = await fetch(`/api/integrations/${integrationId}/execute/plan`, { method: "POST" });
+      const res = await fetch(`/api/integrations/${integrationId}/${planEndpoint}`, { method: "POST" });
       const data = await res.json();
       if (!data.ok) { setMsg(data.error ?? "Could not build a setup plan."); setPhase("error"); return; }
       setPlan(data.plan);
@@ -154,7 +160,7 @@ export function AgentExecutionModal({
       >
         <div className="flex items-center justify-between mb-3">
           <div className="font-mono text-[0.6rem] uppercase tracking-wider" style={{ color: "var(--color-live)" }}>
-            nodeworm agent · set up {appName}
+            {heading ?? `nodeworm agent · set up ${appName}`}
           </div>
           <button onClick={onClose} className="text-sm" style={{ color: "var(--color-muted)" }}>✕</button>
         </div>

@@ -52,7 +52,8 @@ jobs:
           echo "bridge_url=https://emward-nodeworm-${APP}-bridge.hf.space" >> "$GITHUB_OUTPUT"
           echo "url_env=${UP}_BRIDGE_URL" >> "$GITHUB_OUTPUT"
           echo "token_env=${UP}_BRIDGE_TOKEN" >> "$GITHUB_OUTPUT"
-          echo "bridge_token=$BRIDGE_TOKEN" >> "$GITHUB_OUTPUT"
+          # Secret: pass via run-scoped env, never $GITHUB_OUTPUT (queryable run metadata).
+          echo "BRIDGE_TOKEN=$BRIDGE_TOKEN" >> "$GITHUB_ENV"
 
       - name: Wire into NodeWorm (Vercel), if VERCEL_TOKEN is set
         if: ${{ secrets.VERCEL_TOKEN != '' }}
@@ -63,7 +64,7 @@ jobs:
         run: |
           npm i -g vercel >/dev/null 2>&1
           for pair in "${{ steps.provision.outputs.url_env }}:${{ steps.provision.outputs.bridge_url }}" \
-                      "${{ steps.provision.outputs.token_env }}:${{ steps.provision.outputs.bridge_token }}"; do
+                      "${{ steps.provision.outputs.token_env }}:${BRIDGE_TOKEN}"; do
             name="${pair%%:*}"; val="${pair#*:}"
             vercel env rm "$name" production --token "$VERCEL_TOKEN" --yes >/dev/null 2>&1 || true
             printf '%s' "$val" | vercel env add "$name" production --token "$VERCEL_TOKEN" >/dev/null 2>&1 || true
@@ -71,9 +72,12 @@ jobs:
           echo "Wired ${{ steps.provision.outputs.url_env }} into NodeWorm. Redeploy to activate."
 
       - name: Summary
+        env:
+          IN_APP: ${{ inputs.app }}
+          IN_IMAGE: ${{ inputs.image }}
         run: |
           echo "### Hosted bridge provisioned" >> "$GITHUB_STEP_SUMMARY"
-          echo "- App: ${{ inputs.app }} (${{ inputs.image }})" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Space: https://huggingface.co/spaces/emward/nodeworm-${{ inputs.app }}-bridge" >> "$GITHUB_STEP_SUMMARY"
+          echo "- App: ${IN_APP} (${IN_IMAGE})" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Space: https://huggingface.co/spaces/emward/nodeworm-${IN_APP}-bridge" >> "$GITHUB_STEP_SUMMARY"
           echo "- Bridge URL: ${{ steps.provision.outputs.bridge_url }}" >> "$GITHUB_STEP_SUMMARY"
           echo "If VERCEL_TOKEN was set, the *_BRIDGE_URL/TOKEN env are already set; redeploy NodeWorm." >> "$GITHUB_STEP_SUMMARY"

@@ -679,6 +679,10 @@ function Vault({ integration }: { integration: Integration }) {
   const researched = integration.report?.connectMethod === "researched-connector";
   // NodeWorm hosts the connector itself: the user only links once (scans a QR).
   const hosted = integration.report?.connectMethod === "hosted-connector";
+  // NodeWorm GENERATES a real connector (typed MCP over the API, or a scraper over
+  // the UI) that the user deploys; verified via one real read (tunnel or Helper).
+  const generated =
+    integration.report?.connectMethod === "generated-mcp" || integration.report?.connectMethod === "generated-scraper";
   const research = integration.research;
   const connectorVerified = Boolean(integration.connector?.verified);
   // PIN unlock modal: opened by ?pin=required (from oauth/start) or by a child
@@ -699,17 +703,53 @@ function Vault({ integration }: { integration: Integration }) {
     } else if (oauth === "error") {
       setStatus({ kind: "error", reason: p.get("reason") ?? "The authorization did not complete." });
     } else if (pin === "required") {
-      setPinModal({ after: () => { window.location.href = `/api/integrations/${integration.id}/oauth/start`; } });
+      setPinModal({ after: () => openOAuthPopup() });
     }
     // Strip the query so a refresh does not replay the banner / celebration.
     if (oauth || recover || pin) window.history.replaceState({}, "", window.location.pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [integration.id]);
 
-  function authorize() {
+  // Universal OAuth popup: open the consent in a window and react to the closer's
+  // postMessage (pinned to this origin) for ANY discovered OAuth path. Falls back to
+  // a full-page redirect if the popup is blocked, so the flow always completes.
+  function openOAuthPopup() {
     setBusy(true);
+    const url = `/api/integrations/${integration.id}/oauth/start?popup=1`;
+    const w = window.open(url, "nodeworm-oauth", "width=520,height=680");
+    if (!w) {
+      window.location.href = `/api/integrations/${integration.id}/oauth/start`;
+      return;
+    }
+    function onMsg(e: MessageEvent) {
+      if (e.origin !== window.location.origin) return;
+      const d = e.data as { source?: string; id?: string; outcome?: string; reason?: string } | null;
+      if (!d || d.source !== "nodeworm-oauth" || d.id !== integration.id) return;
+      window.removeEventListener("message", onMsg);
+      setBusy(false);
+      if (d.outcome === "connected") {
+        setStatus({ kind: "connected" });
+        setCelebrate(true);
+      } else if (d.outcome === "recover" || d.outcome === "error" && d.reason === "pin required") {
+        // Guided registration or PIN: the run page reload picks up the recovery card.
+        window.location.href = `/run/${integration.id}`;
+      } else if (d.outcome === "blocked") {
+        setStatus({ kind: "blocked", reason: d.reason ?? "No genuine OAuth path is available." });
+      } else {
+        setStatus({ kind: "error", reason: d.reason ?? "The authorization did not complete." });
+      }
+    }
+    window.addEventListener("message", onMsg);
+    // If the user closes the popup without finishing, stop the spinner.
+    const poll = setInterval(() => {
+      if (w.closed) { clearInterval(poll); setBusy(false); window.removeEventListener("message", onMsg); }
+    }, 800);
+  }
+
+  function authorize() {
     // Hand off to the resolver: it either runs the genuine consent (creds in hand)
     // or comes back with the guided recovery card to register a client.
-    window.location.href = `/api/integrations/${integration.id}/oauth/start`;
+    openOAuthPopup();
   }
 
   return (
@@ -814,11 +854,17 @@ function Vault({ integration }: { integration: Integration }) {
           </details>
         )}
 
-        {!managed && !researched && !hosted && !connected && !blocked && recipe && (
+        {/* NodeWorm generates a real, typed connector from the discovered surface;
+            the user deploys it and NodeWorm verifies one real read. */}
+        {generated && !connectorVerified && !blocked && (
+          <GeneratedConnectorCard integration={integration} />
+        )}
+
+        {!managed && !researched && !hosted && !generated && !connected && !blocked && recipe && (
           <RecoveryCard integration={integration} recipe={recipe} requestUnlock={requestUnlock} />
         )}
 
-        {!managed && !researched && !hosted && !connected && !blocked && !recipe && (
+        {!managed && !researched && !hosted && !generated && !connected && !blocked && !recipe && (
           <button onClick={authorize} className="btn btn-ink text-sm w-full" disabled={busy}>
             {busy ? "Resolving..." : `Authorize ${integration.appName} via OAuth`}
           </button>
@@ -1499,6 +1545,140 @@ function ResearchedMethodCard({
       <p className="font-mono text-[0.6rem] mt-3" style={{ color: "var(--color-muted)" }}>
         Researched by the model. Verify the project and link before relying on it.
       </p>
+    </div>
+  );
+}
+
+// Generated connector: NodeWorm writes a real, typed MCP (over the discovered API)
+// or Playwright scraper (over the UI) from what discovery found. The user generates
+// it, downloads the files, runs it locally, then exposes it via a hash-pinned
+// cloudflared tunnel (the Agent) so the cloud can verify one real read. Honest:
+// "generated, not deployed" until that read succeeds.
+type GenFile = { path: string; content: string };
+function GeneratedConnectorCard({ integration }: { integration: Integration }) {
+  const isScraper = integration.report?.connectMethod === "generated-scraper";
+  const [files, setFiles] = useState<GenFile[] | null>(integration.generated?.files ?? null);
+  const [meta, setMeta] = useState<{ apiBase?: string; openApiOps?: number; connectorName?: string } | null>(
+    integration.generated
+      ? { apiBase: integration.generated.apiBase, connectorName: integration.generated.connectorName }
+      : null,
+  );
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [showTunnel, setShowTunnel] = useState(false);
+
+  async function generate() {
+    if (busy) return;
+    setBusy(true);
+    setMsg(`Generating a ${isScraper ? "scraper" : "typed MCP"} connector from ${integration.appName}'s discovered surface…`);
+    try {
+      const res = await fetch(`/api/integrations/${integration.id}/generate`, { method: "POST" });
+      const data = await res.json();
+      if (!data.ok) {
+        setMsg(data.error ?? "Could not generate the connector.");
+        setBusy(false);
+        return;
+      }
+      setFiles(data.files as GenFile[]);
+      setMeta({ apiBase: data.apiBase, openApiOps: data.openApiOps, connectorName: data.connectorName });
+      setMsg(
+        `Generated ${data.connectorName}${data.openApiOps ? ` with ${data.openApiOps} tools from ${integration.appName}'s OpenAPI spec` : ""}. Download it, run it, then expose it below.`,
+      );
+    } catch {
+      setMsg("Could not generate the connector.");
+    }
+    setBusy(false);
+  }
+
+  function downloadAll() {
+    if (!files) return;
+    // No zip dependency: emit an apply-able shell heredoc bundle. Honest and
+    // transparent (every file is visible), and one click on any OS.
+    const bundle = files
+      .map((f) => `# ==== ${f.path} ====\nmkdir -p "$(dirname "${f.path}")" 2>/dev/null\ncat > "${f.path}" <<'NODEWORM_EOF'\n${f.content}\nNODEWORM_EOF\n`)
+      .join("\n");
+    const header = `#!/bin/sh\n# ${meta?.connectorName ?? "nodeworm-connector"} generated by NodeWorm. Run in an empty folder: sh setup.sh\nset -e\n\n`;
+    const blob = new Blob([header + bundle], { type: "text/x-shellscript" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${meta?.connectorName ?? "nodeworm-connector"}-setup.sh`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  return (
+    <div className="rounded-lg p-4 mb-3" style={{ border: "1px solid var(--color-live)", background: "var(--color-paper)" }}>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="dot" style={{ background: "var(--color-live)" }} />
+        <span className="font-mono text-[0.58rem] uppercase tracking-wider" style={{ color: "var(--color-live)" }}>
+          generated connector · {isScraper ? "scraper over the ui" : "typed mcp over the api"}
+        </span>
+      </div>
+      <p className="text-sm mb-3" style={{ color: "var(--color-ink-soft)" }}>
+        {integration.appName} has no hosted MCP{isScraper ? " and no public API" : ""}, so NodeWorm writes a real, typed{" "}
+        {isScraper ? "Playwright scraper" : "MCP server"} from what discovery found. You run it with your own{" "}
+        {isScraper ? "sign-in" : "token"}; NodeWorm verifies one real read before anything is called connected.
+      </p>
+
+      {!files ? (
+        <button onClick={generate} disabled={busy} className="btn btn-signal text-sm w-full justify-center">
+          {busy ? "Generating…" : "Generate the connector"}
+        </button>
+      ) : (
+        <div className="space-y-3">
+          {meta?.apiBase && (
+            <div className="flex flex-wrap gap-1.5">
+              <MethodChip label={`base ${meta.apiBase.replace(/^https?:\/\//, "")}`} color="var(--color-teal)" />
+              {meta.openApiOps ? <MethodChip label={`${meta.openApiOps} real ops`} color="var(--color-live)" /> : null}
+            </div>
+          )}
+          <div className="rounded-md overflow-hidden" style={{ background: "#1b1812", border: "1px solid #2c2820" }}>
+            <div className="telemetry px-3 py-2.5">
+              {files.map((f) => (
+                <div key={f.path} className="flex gap-2 items-baseline" style={{ color: "#b8b0a2" }}>
+                  <span style={{ color: "#7d756a" }}>+</span>
+                  <span style={{ color: "#d8cfbe" }}>{f.path}</span>
+                  <span style={{ color: "#7d756a" }}>{f.content.split("\n").length}L</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <button onClick={downloadAll} className="btn btn-ink text-sm w-full justify-center">
+            Download the connector
+          </button>
+          <div className="rounded-md p-3" style={{ background: "var(--color-paper-2)", border: "1px solid var(--color-line-2)" }}>
+            <div className="font-mono text-[0.56rem] uppercase tracking-wider mb-1.5" style={{ color: "var(--color-live)" }}>
+              run it, then expose it
+            </div>
+            <ol className="space-y-1 mb-2 text-[0.72rem]" style={{ color: "var(--color-ink-soft)" }}>
+              <li>1. Run <code className="font-mono text-[0.66rem]">sh {meta?.connectorName ?? "connector"}-setup.sh</code> in an empty folder.</li>
+              <li>2. <code className="font-mono text-[0.66rem]">npm install &amp;&amp; npm run build</code>, then <code className="font-mono text-[0.66rem]">TRANSPORT=http npm start</code>.</li>
+              <li>3. Expose it so NodeWorm can verify one real read:</li>
+            </ol>
+            <button onClick={() => setShowTunnel(true)} className="btn btn-signal text-sm w-full justify-center">
+              ⚡ Expose it via a secure tunnel
+            </button>
+            <p className="text-[0.6rem] mt-1.5" style={{ color: "var(--color-muted)" }}>
+              The NodeWorm Agent opens a hash-pinned Cloudflare tunnel to your local connector, then NodeWorm makes one real
+              request through it. No account, no port-forwarding.
+            </p>
+          </div>
+        </div>
+      )}
+      {msg && (
+        <p className="font-mono text-[0.62rem] mt-2" style={{ color: "var(--color-muted)" }}>
+          {msg}
+        </p>
+      )}
+      {showTunnel && (
+        <AgentExecutionModal
+          integrationId={integration.id}
+          appName={integration.appName}
+          planEndpoint="tunnel"
+          heading={`nodeworm agent · expose ${integration.appName}`}
+          onClose={() => setShowTunnel(false)}
+        />
+      )}
     </div>
   );
 }

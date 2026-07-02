@@ -294,6 +294,11 @@ export function architect(
     // The managed browser session is the universal floor for any web-loginable app,
     // so it backstops the API/OAuth/connector methods.
     ...(!d.noWebClient && primaryMethod !== "managed-session" ? (["managed-session"] as ConnectMethod[]) : []),
+    // Deepest fallbacks: NodeWorm GENERATES a real connector from the discovered
+    // surface (typed MCP over the API, or a Playwright scraper over the UI). The
+    // user deploys it, so it sits below the auth-only methods, above the terminal.
+    ...(d.hasPublicApi && !d.hasHostedMcp ? (["generated-mcp"] as ConnectMethod[]) : []),
+    ...(!d.hasPublicApi && !d.noWebClient ? (["generated-scraper"] as ConnectMethod[]) : []),
   ].filter((m, i, a) => a.indexOf(m) === i);
   const exclude = opts?.excludeMethods ?? [];
   const connectMethod: ArchitectPlan["connectMethod"] = candidates.find((m) => !exclude.includes(m)) ?? primaryMethod;
@@ -309,7 +314,20 @@ export function architect(
         ? "managed-session"
         : connectMethod === "managed-session"
           ? "managed-session"
-          : "live";
+          : connectMethod === "generated-mcp" || connectMethod === "generated-scraper"
+            ? "generated"
+            : "live";
+  const generated = connectMethod === "generated-mcp" || connectMethod === "generated-scraper";
+  if (generated) {
+    buildsCustomMcp = true;
+    if (!customMcpSpec) customMcpSpec = mcpSpec({ ...d, apiType: d.hasPublicApi ? d.apiType : "rest" });
+    notes.push(
+      connectMethod === "generated-mcp"
+        ? `NodeWorm generates a real, typed MCP connector from ${d.appName}'s discovered API surface. You deploy it (one command) with your own token; NodeWorm verifies one real read before anything is called connected.`
+        : `NodeWorm generates a Playwright scraper connector that drives ${d.appName}'s own UI. You run it with a saved sign-in session; NodeWorm verifies one real read before anything is called connected.`,
+    );
+    tel.push({ level: "action", text: `Generating a ${connectMethod === "generated-mcp" ? "typed MCP connector over the API" : "scraper connector over the UI"} for ${d.appName}.` });
+  }
   if (connectMethod === "hosted-connector") {
     notes.push(
       `${d.appName} has no browser login, so NodeWorm hosts the connector for you. Your only step is to link your account once by scanning a QR code in ${d.appName}; NodeWorm holds the link encrypted and drives it. You install and configure nothing.`,
@@ -365,8 +383,13 @@ export function architect(
     notes.push("Rate limited: the connector throttles and backs off on 429s.");
   }
 
-  const steps =
-    connectMethod === "hosted-connector"
+  const steps = generated
+    ? [
+        { n: 1, title: "Generate the connector", detail: `NodeWorm writes a real, typed ${connectMethod === "generated-mcp" ? "MCP server over the discovered API" : "Playwright scraper over the UI"} for ${d.appName}.`, actor: "agent" as const },
+        { n: 2, title: "Deploy it", detail: "Run it with npm install && npm start (or hand it to the NodeWorm Agent). Your token / sign-in stays on your side.", actor: "user" as const },
+        { n: 3, title: "Verify", detail: "NodeWorm makes one real read of the running connector before marking it connected.", actor: "agent" as const },
+      ]
+    : connectMethod === "hosted-connector"
       ? [
           { n: 1, title: "Link your account", detail: `Scan the QR code in ${d.appName} > Linked devices. That is your only step.`, actor: "user" as const },
           { n: 2, title: "Verify the link", detail: "NodeWorm confirms the device linked and holds it encrypted.", actor: "agent" as const },
@@ -377,16 +400,22 @@ export function architect(
 
   return {
     path,
-    pathLabel:
-      connectMethod === "hosted-connector"
+    pathLabel: generated
+      ? connectMethod === "generated-mcp"
+        ? "Generated MCP connector (self-deployed)"
+        : "Generated scraper connector (self-deployed)"
+      : connectMethod === "hosted-connector"
         ? `NodeWorm-hosted bridge`
         : connectMethod === "researched-connector" && best
           ? `Researched connector: ${best.name}`
           : connectMethod === "managed-session"
             ? "Managed browser session"
             : pathLabel(path, authType),
-    pathReason:
-      connectMethod === "hosted-connector"
+    pathReason: generated
+      ? connectMethod === "generated-mcp"
+        ? `The other methods for ${d.appName} were excluded, so NodeWorm generates a real typed MCP connector from its discovered API surface for you to deploy.`
+        : `The other methods for ${d.appName} were excluded, so NodeWorm generates a Playwright scraper connector over its own UI for you to deploy.`
+      : connectMethod === "hosted-connector"
         ? `${d.appName} has no browser login, so NodeWorm hosts the connector for you. You link once by scanning a QR; NodeWorm runs and drives the connector.`
         : connectMethod === "researched-connector" && best
           ? `${d.appName} has no API or OAuth, but the Pathfinder found a real method: ${best.name}. ${best.summary}`
@@ -618,12 +647,14 @@ export function report(
   connected: boolean,
   research?: ResearchResult,
   connectorVerified = false,
+  generatedReady = false,
 ): Report {
   const cm = plan.connectMethod;
   const mk = plan.methodKind;
   const managed = cm === "managed-session";
   const researched = cm === "researched-connector";
   const hosted = cm === "hosted-connector";
+  const generated = cm === "generated-mcp" || cm === "generated-scraper";
   const best = research?.best;
 
   // Never blocked: every app reaches a real method. A live method is "connected"
@@ -635,6 +666,7 @@ export function report(
   // (a technical user opted into the advanced self-host path), so it wins outright.
   let status: IntegrationStatus;
   if (connectorVerified) status = "connected-via-connector";
+  else if (generated) status = generatedReady ? "generated" : "planned";
   else if (researched || hosted) status = "needs-credentials";
   else if (managed) status = connected ? "connected-via-session" : "needs-credentials";
   else status = connected ? "connected" : "needs-credentials";
@@ -700,6 +732,28 @@ export function report(
       detail: best.setupSteps[0] ?? best.summary,
       url: best.url,
     });
+  } else if (generated) {
+    if (generatedReady) {
+      capabilities.push(
+        cm === "generated-mcp"
+          ? `A real, typed MCP connector was generated from ${d.appName}'s discovered API surface: generic api_request${d.probe?.graphqlUrl ? " + graphql_query against the live endpoint" : ""} plus per-operation tools. Generated, not deployed: it goes live when you run it and NodeWorm verifies one real read.`
+          : `A Playwright scraper connector was generated over ${d.appName}'s own UI (open/read/click/fill tools). Generated, not deployed: it goes live when you run it with your saved sign-in and NodeWorm verifies one real read.`,
+      );
+      nextSteps.push({
+        kind: "config",
+        label: "Deploy the generated connector",
+        detail: `Download the bundle, run npm install && npm run build, then TRANSPORT=http npm start and paste its URL into NodeWorm. One real GET must succeed before anything is called connected.`,
+      });
+    } else {
+      capabilities.push(
+        `NodeWorm can generate a real, typed ${cm === "generated-mcp" ? "MCP connector over the discovered API" : "scraper connector over the UI"} for ${d.appName}. Nothing is generated yet.`,
+      );
+      nextSteps.push({
+        kind: "config",
+        label: "Generate the connector",
+        detail: `NodeWorm writes the full ${cm === "generated-mcp" ? "typed MCP server" : "Playwright scraper"} project from what discovery found. You review and deploy it; your token or sign-in never leaves your side.`,
+      });
+    }
   } else if (managed) {
     capabilities.push(
       `NodeWorm drives ${d.appName} for you: you authenticate once (a login or a QR scan) in a hosted browser, and NodeWorm holds the live session and runs every read and write through the UI itself. You do nothing else; it never sees your password.`,
@@ -758,7 +812,11 @@ export function report(
           ? `${d.appName} is connected via ${best.name}.`
           : hosted && best
             ? `${d.appName} is ready. Scan one QR to link it; NodeWorm hosts the rest.`
-            : researched && best
+            : generated
+              ? generatedReady
+                ? `${d.appName} connector generated. Deploy it and NodeWorm verifies it live.`
+                : `${d.appName} gets a generated connector. One click to write the code.`
+              : researched && best
               ? `${d.appName} connects via ${best.name}. Researched and ready to set up.`
               : managed
                 ? `${d.appName} is ready. Sign in once and NodeWorm does the rest.`
@@ -769,7 +827,9 @@ export function report(
       ? `Connected via ${best.name}. NodeWorm reached the connector and verified one real read. Write actions and two-way sync are verified the first time you use them.`
       : hosted && best
         ? `NodeWorm hosts ${best.name} for you. ${d.appName} has no browser login, so your only step is to scan a QR once to link your account; NodeWorm runs and drives the connector. ${w.bidirectional ? "Bidirectional" : "Outbound"} sync via ${w.inboundMethod}.`
-        : researched && best
+        : generated
+          ? `NodeWorm ${generatedReady ? "generated" : "will generate"} a real, typed ${cm === "generated-mcp" ? "MCP connector from the discovered API surface" : "Playwright scraper connector over the app's UI"}. Honest status: generated, not deployed, until one real read is verified.`
+          : researched && best
           ? `Pathfinder method: ${best.name}. ${best.summary} ${best.selfHostable ? "Self-host it, then NodeWorm connects to it." : "Set it up, then connect it."}`
           : managed
             ? `Managed browser session. You authenticate to ${d.appName} once (a login or a QR scan); NodeWorm holds the live session and drives the UI for everything else. ${w.bidirectional ? "Bidirectional" : "Outbound"} sync via ${w.inboundMethod}.`

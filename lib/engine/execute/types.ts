@@ -16,8 +16,10 @@ export type TaskKind =
   | "signal-start" // start the bundled native signal-cli daemon (no Docker)
   | "signal-link" // startLink -> show QR -> finishLink (blocks until phone scans)
   | "signal-verify" // listAccounts on the linked native connector
-  | "capture-session"; // spawn a capture process that opens a browser; Agent shows a prompt and
-                       // polls captureReadyUrl until the tool signals completion, then continues
+  | "capture-session" // spawn a capture process that opens a browser; Agent shows a prompt and
+                      // polls captureReadyUrl until the tool signals completion, then continues
+  | "tunnel-start"; // open a hash-pinned cloudflared quick tunnel to a local port so the
+                    // cloud can reach a localhost connector; verified by one real proxied request
 
 // The human-only actions the Agent must PAUSE for and never perform itself.
 export type HumanKind = "password" | "username" | "auth-approve" | "2fa" | "qr-scan" | "wait";
@@ -44,6 +46,9 @@ export interface ExecuteTask {
   // capture-session only: URL polled by the Agent to know when the capture subprocess
   // has finished writing the client (the wrapper server exposes GET /ready -> 200).
   captureReadyUrl?: string;
+  // tunnel-start only: the LOCAL port to expose. The Agent validates it and probes
+  // verify.url (a path) through the public tunnel URL before reporting up.
+  tunnelPort?: number;
   verify?: VerifyProbe; // run after the task; failure on a criticalPath task aborts + rolls back
   rollback?: { command: string[] }; // idempotent cleanup run on failure / abort
   requiresHuman: boolean; // a pause point: the Agent hands control back to the user
@@ -89,5 +94,8 @@ export interface ExecutionResult {
   aborted?: boolean;
   steps: Array<{ n: number; ok: boolean; verified?: boolean; detail?: string }>;
   connectorReachable?: boolean; // the Agent's local probe of connectorUrl succeeded
+  // Public trycloudflare URL the Agent opened (tunnel-start). The cloud NEVER trusts
+  // this claim alone: it re-verifies with its own real GET before recording it.
+  tunnelUrl?: string;
   detail?: string;
 }

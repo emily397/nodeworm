@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getIntegration, saveIntegration } from "@/lib/store";
+import { getOwnedIntegration, saveIntegration } from "@/lib/store";
 import { hostedSpecForApp, hostedBaseUrl, hostedToken, pollLinkedNumber } from "@/lib/engine/hosted-connectors";
 import { verifyConnector } from "@/lib/engine/connector";
 import { storeConnector, vaultStatus } from "@/lib/engine/vault";
@@ -16,7 +16,7 @@ export const maxDuration = 60;
 // connected-via-connector. Mirrors connector/connect + session/confirm.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const it = await getIntegration(id);
+  const it = await getOwnedIntegration(req, id);
   if (!it) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const spec = hostedSpecForApp(it.appName);

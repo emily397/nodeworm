@@ -6,6 +6,7 @@ import fs from "fs";
 import path from "path";
 import { neon } from "@neondatabase/serverless";
 import { freshPhases, type Bridge, type Integration } from "./engine/types";
+import { authAvailable, currentUserId } from "./engine/auth";
 
 const sql = process.env.DATABASE_URL ? neon(process.env.DATABASE_URL) : null;
 
@@ -89,6 +90,19 @@ export async function getIntegration(id: string): Promise<Integration | undefine
     return rows[0]?.data;
   }
   return fileLoad().find((i) => i.id === id);
+}
+
+// Ownership-scoped fetch for the per-integration API routes. When accounts are on
+// and the record has an owner, only that owner may read/mutate it; returns
+// undefined (route answers 404) otherwise, so ids can't be used to reach another
+// user's integration. Anonymous/unkeyed mode has no owners and stays single-tenant.
+// NOTE: only for session-authenticated routes; token-authenticated flows (the
+// Agent execute/callback) must not use this.
+export async function getOwnedIntegration(req: Request, id: string): Promise<Integration | undefined> {
+  const it = await getIntegration(id);
+  if (!it) return undefined;
+  if (authAvailable() && it.userId && it.userId !== (await currentUserId(req))) return undefined;
+  return it;
 }
 
 export async function createIntegration(appName: string, appUrl?: string, userId?: string): Promise<Integration> {

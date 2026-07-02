@@ -19,6 +19,7 @@ export function BridgeConsole() {
   const [error, setError] = useState<string | null>(null);
   const [desc, setDesc] = useState("");
   const [descBusy, setDescBusy] = useState(false);
+  const [clarify, setClarify] = useState<string | null>(null);
 
   const pairMode = target.trim().length > 0;
 
@@ -27,15 +28,22 @@ export function BridgeConsole() {
     if (!prompt || descBusy) return;
     setDescBusy(true);
     setError(null);
+    setClarify(null);
     try {
       const res = await fetch("/api/request", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ prompt }),
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Failed");
-      const { redirect } = await res.json();
-      router.push(redirect);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      // Ambiguous request: the engine asks one question instead of guessing.
+      if (data.needsClarification) {
+        setClarify(data.question ?? "Which apps should this connect, and what should happen?");
+        setDescBusy(false);
+        return;
+      }
+      router.push(data.redirect);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
       setDescBusy(false);
@@ -214,6 +222,12 @@ export function BridgeConsole() {
           {descBusy ? "routing..." : "go"}
         </button>
       </form>
+
+      {clarify && (
+        <p className="mt-3 font-mono text-xs" style={{ color: "var(--color-signal)" }}>
+          ?? {clarify}
+        </p>
+      )}
 
       {error && (
         <p className="mt-3 font-mono text-xs" style={{ color: "var(--color-blocked)" }}>

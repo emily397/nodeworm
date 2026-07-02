@@ -85,3 +85,59 @@ export function buildSignedPlan(
   const envelope: SignedPlanEnvelope = { planJson, ...sig };
   return { envelope, plan, callbackToken };
 }
+
+// A signed single-task plan that makes a LOCAL connector cloud-reachable via a
+// hash-pinned cloudflared quick tunnel. Same signing + callback spine as setup
+// plans; the callback route re-verifies the reported public URL from the cloud
+// with one real GET before anything is recorded reachable.
+export function buildSignedTunnelPlan(
+  it: Integration,
+  origin: string,
+  port: number,
+  healthPath: string,
+): { envelope: SignedPlanEnvelope; plan: ExecutionPlan; callbackToken: string } | null {
+  if (!signingAvailable()) return null;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return null;
+
+  const planId = randomBytes(12).toString("hex");
+  const callbackToken = randomBytes(24).toString("hex");
+  const now = Date.now();
+
+  const plan: ExecutionPlan = {
+    id: planId,
+    integrationId: it.id,
+    connectorName: `${it.appName}-tunnel`,
+    appName: it.appName,
+    researchKind: it.research?.best?.kind ?? "rest-wrapper",
+    surface: "native-host",
+    summary: `Expose your local ${it.appName} connector (127.0.0.1:${port}) to NodeWorm through an ephemeral Cloudflare quick tunnel. No account, no port-forwarding; the URL dies with the tunnel.`,
+    warnings: [
+      "The tunnel makes this one local port publicly reachable while it runs. Anyone with the random URL can hit that port, so keep the connector's own token on.",
+      "Quick tunnels are ephemeral: a new URL is issued each start, and NodeWorm re-verifies before trusting it.",
+    ],
+    humanActions: ["Approve this plan. Nothing else: the Agent opens the tunnel and NodeWorm verifies it."],
+    connectorUrl: `http://127.0.0.1:${port}${healthPath}`,
+    tasks: [
+      {
+        n: 1,
+        kind: "tunnel-start",
+        title: "Open a secure tunnel to the local connector",
+        description: `cloudflared (pinned + hash-verified) exposes 127.0.0.1:${port}; one real request through the public URL must succeed.`,
+        tunnelPort: port,
+        verify: { kind: "http-health", url: healthPath || "/health" },
+        requiresHuman: false,
+        criticalPath: true,
+        timeoutMs: 240000,
+      },
+    ],
+    callbackUrl: `${origin}/api/integrations/${it.id}/execute/callback`,
+    callbackToken,
+    createdAt: now,
+    expiresAt: now + 60 * 60 * 1000,
+  };
+
+  const planJson = JSON.stringify(plan);
+  const sig = signPlanJson(planJson);
+  if (!sig) return null;
+  return { envelope: { planJson, ...sig }, plan, callbackToken };
+}

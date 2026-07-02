@@ -13,6 +13,7 @@ import type {
   BridgeReport,
   BridgeStatus,
   BridgeTrigger,
+  BridgeWorkflow,
   FieldMap,
   InboundMethod,
   Integration,
@@ -185,8 +186,30 @@ export function bridgeReport(a: Integration, b: Integration, flow: BridgeFlow): 
   return { status, headline, summary, capabilities, nextSteps, warnings };
 }
 
-export function buildBridge(a: Integration, b: Integration): { flow: BridgeFlow; report: BridgeReport; status: BridgeStatus } {
-  const flow = planBridge(a, b);
+// Overlay the user's own parsed trigger + action + mappings onto the computed flow,
+// so a plain-language request keeps what the person actually asked for instead of
+// the generic entity pairing. Direction is derived from which side the trigger fires.
+export function applyWorkflow(flow: BridgeFlow, wf: BridgeWorkflow, a: Integration, b: Integration): BridgeFlow {
+  if (!wf.trigger || flow.direction === "none") return flow;
+  const triggerIsA = wf.trigger.app.toLowerCase() === a.appName.toLowerCase();
+  const direction: BridgeTrigger["direction"] = triggerIsA ? "a-to-b" : "b-to-a";
+  const action = wf.actions[0];
+  const via = flow.triggers.find((t) => t.direction === direction)?.via ?? inboundOf(triggerIsA ? a : b);
+  const trigger: BridgeTrigger = {
+    direction,
+    when: `${wf.trigger.event} in ${wf.trigger.app}`,
+    then: action ? `${action.op} in ${action.app}` : `create or update the matching record in ${triggerIsA ? b.appName : a.appName}`,
+    via,
+  };
+  const mappings = wf.mappings.length
+    ? wf.mappings.map((m) => ({ fromEntity: `${m.fromApp}.${m.fromEntity}`, toEntity: `${m.toApp}.${m.toEntity}`, fields: m.fields }))
+    : flow.mappings;
+  return { ...flow, triggers: [trigger], mappings, notes: [...flow.notes, "Trigger and action set from the user's request."] };
+}
+
+export function buildBridge(a: Integration, b: Integration, wf?: BridgeWorkflow): { flow: BridgeFlow; report: BridgeReport; status: BridgeStatus } {
+  let flow = planBridge(a, b);
+  if (wf) flow = applyWorkflow(flow, wf, a, b);
   const report = bridgeReport(a, b, flow);
   return { flow, report, status: report.status };
 }
