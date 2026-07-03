@@ -1,8 +1,82 @@
 import { NextResponse } from "next/server";
 import { getOwnedIntegration, saveIntegration } from "@/lib/store";
-import { generateBundle } from "@/lib/engine/generate";
+import { generateBundle, type GraphqlField } from "@/lib/engine/generate";
 import { recompute } from "@/lib/engine/orchestrate";
 import type { OpenApiOp } from "@/lib/engine/types";
+
+// Unwrap a GraphQL introspection type ref down to its named type + kind.
+function namedType(t: unknown): { name?: string; kind?: string } {
+  let cur = t as { name?: string; kind?: string; ofType?: unknown } | null;
+  let guard = 0;
+  while (cur && !cur.name && cur.ofType && guard++ < 8) cur = cur.ofType as typeof cur;
+  return { name: cur?.name, kind: cur?.kind };
+}
+
+// Render a GraphQL type ref back to SDL (Int, String!, [ID!]) for variable decls.
+function typeString(t: unknown): string {
+  const n = t as { name?: string; kind?: string; ofType?: unknown } | null;
+  if (!n) return "String";
+  if (n.kind === "NON_NULL") return `${typeString(n.ofType)}!`;
+  if (n.kind === "LIST") return `[${typeString(n.ofType)}]`;
+  return n.name ?? "String";
+}
+
+type IntroField = { name: string; args?: Array<{ name: string; type: unknown }> };
+const SCALAR_KINDS = new Set(["SCALAR", "ENUM"]);
+
+async function gqlPost(url: string, query: string): Promise<unknown> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ query }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(6000),
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+function toFields(fields: IntroField[] | undefined): GraphqlField[] {
+  if (!fields) return [];
+  return fields.slice(0, 12).map((f) => ({
+    name: f.name,
+    args: (f.args ?? []).map((a) => {
+      const nt = namedType(a.type);
+      // A directly-named scalar/enum is safely typed for a GraphQL variable. A
+      // wrapper-typed arg (NON_NULL/LIST) whose inner type the server's depth
+      // limit hid stays non-scalar and is simply not emitted as a typed param.
+      const scalar = SCALAR_KINDS.has(nt.kind ?? "") && Boolean(nt.name);
+      return { name: a.name, type: scalar ? typeString(a.type) : nt.name ?? "String", scalar };
+    }),
+  }));
+}
+
+// Live introspection: pull the Query type's fields and their scalar/enum args so
+// the generated MCP gets real, typed per-field tools. Tries a deep query first
+// (full type info) and falls back to a shallow one for servers that enforce a
+// query-depth limit (e.g. Rick and Morty API). Any failure yields no gql fields
+// and the generic graphql_query still ships.
+async function graphqlQueryFields(url?: string): Promise<GraphqlField[]> {
+  if (!url) return [];
+  try {
+    const deep = (await gqlPost(
+      url,
+      `{ __schema { queryType { name } types { name kind fields { name args { name type { kind name ofType { kind name ofType { kind name } } } } } } } }`,
+    )) as { data?: { __schema?: { queryType?: { name?: string }; types?: Array<{ name?: string; fields?: IntroField[] }> } } } | null;
+    const schema = deep?.data?.__schema;
+    if (schema?.queryType?.name) {
+      const qType = schema.types?.find((t) => t.name === schema.queryType!.name);
+      if (qType?.fields) return toFields(qType.fields);
+    }
+    // Shallow fallback: no nested ofType, targets only the Query type.
+    const shallow = (await gqlPost(url, `{ __type(name: "Query") { fields { name args { name type { kind name } } } } }`)) as
+      | { data?: { __type?: { fields?: IntroField[] } } }
+      | null;
+    return toFields(shallow?.data?.__type?.fields);
+  } catch {
+    return [];
+  }
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,7 +124,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   const ops = it.discovery.hasPublicApi ? await openApiOps(it.discovery.probe?.openApiUrl) : [];
-  it.generated = generateBundle(it.discovery, it.wire, ops);
+  const gqlFields =
+    it.discovery.apiType === "graphql" ? await graphqlQueryFields(it.discovery.probe?.graphqlUrl) : [];
+  it.generated = generateBundle(it.discovery, it.wire, ops, gqlFields);
   recompute(it);
   await saveIntegration(it);
 
@@ -60,6 +136,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     connectorName: it.generated.connectorName,
     apiBase: it.generated.apiBase,
     openApiOps: ops.length,
+    graphqlTools: gqlFields.length,
     files: it.generated.files,
     deploySteps: it.generated.deploySteps,
     status: it.status,

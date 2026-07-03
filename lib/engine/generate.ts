@@ -158,7 +158,14 @@ const SERVER_MAIN = [
   ``,
 ].join("\n");
 
-function mcpTools(d: Discovery, w: WireConfig, ops: OpenApiOp[]): string {
+// A real Query field lifted from live GraphQL introspection: its name and its
+// scalar arguments (with their GraphQL type string, e.g. "Int", "String!").
+export interface GraphqlField {
+  name: string;
+  args: { name: string; type: string; scalar: boolean }[];
+}
+
+function mcpTools(d: Discovery, w: WireConfig, ops: OpenApiOp[], gqlFields: GraphqlField[]): string {
   const lines: string[] = [];
 
   lines.push(
@@ -187,6 +194,42 @@ function mcpTools(d: Discovery, w: WireConfig, ops: OpenApiOp[]): string {
       `);`,
       ``,
     );
+    // Typed per-field tools from LIVE introspection: real Query fields with their
+    // scalar args, so an MCP client gets first-class tools (not just a raw query
+    // box). The caller supplies the selection set; args ride as GraphQL variables.
+    for (const f of gqlFields.slice(0, 12)) {
+      const args = f.args.filter((a) => a.scalar);
+      const schema = args.map((a) => `    ${JSON.stringify(a.name)}: z.string().optional(),`);
+      const varDecls = args.map((a) => `$${a.name}: ${a.type}`).join(", ");
+      lines.push(
+        `server.tool(`,
+        `  ${JSON.stringify(toolSlug(`gql_${f.name}`))},`,
+        `  ${JSON.stringify(`Query ${f.name} on ${d.appName} (real GraphQL). Pass 'select' as the GraphQL selection set${args.length ? `; args: ${args.map((a) => a.name).join(", ")}` : ""}.`)},`,
+        `  {`,
+        ...schema,
+        `    select: z.string().describe("GraphQL selection set, e.g. 'results { id name }'"),`,
+        `  },`,
+        `  async (args) => {`,
+        `    const provided = Object.entries(args as Record<string, unknown>).filter(([k, v]) => k !== "select" && v !== undefined);`,
+        `    const decls = (${JSON.stringify(args.map((a) => ({ name: a.name, type: a.type })))} as { name: string; type: string }[]).filter((d) => provided.some(([k]) => k === d.name));`,
+        `    const head = decls.length ? "(" + decls.map((d) => "$" + d.name + ": " + d.type).join(", ") + ")" : "";`,
+        `    const call2 = decls.length ? "(" + decls.map((d) => d.name + ": $" + d.name).join(", ") + ")" : "";`,
+        `    // Coerce string inputs to the arg's real GraphQL scalar (Int/Float/Boolean).`,
+        `    const variables = Object.fromEntries(provided.map(([k, v]) => {`,
+        `      const t = decls.find((d) => d.name === k)?.type ?? "";`,
+        `      if (/^Int/.test(t)) return [k, parseInt(String(v), 10)];`,
+        `      if (/^Float/.test(t)) return [k, parseFloat(String(v))];`,
+        `      if (/^Boolean/.test(t)) return [k, v === true || v === "true"];`,
+        `      return [k, v];`,
+        `    }));`,
+        `    const query = "query " + head + " { ${f.name}" + call2 + " { " + args.select + " } }";`,
+        `    return out(await call("POST", GRAPHQL_URL, { query, variables }));`,
+        `  },`,
+        `);`,
+        ``,
+      );
+      void varDecls;
+    }
   }
 
   // Real operations from the app's own OpenAPI spec: genuine paths, not guesses.
@@ -318,14 +361,14 @@ function readme(d: Discovery, kind: "mcp" | "scraper", name: string, apiBase?: s
   ].join("\n");
 }
 
-export function generateBundle(d: Discovery, w: WireConfig, ops: OpenApiOp[] = []): GeneratedBundle {
+export function generateBundle(d: Discovery, w: WireConfig, ops: OpenApiOp[] = [], gqlFields: GraphqlField[] = []): GeneratedBundle {
   const kind: "mcp" | "scraper" = d.hasPublicApi ? "mcp" : "scraper";
   const name = `${slugName(d.appName)}-${kind === "mcp" ? "mcp" : "scraper"}`;
   const apiBase = kind === "mcp" ? discoveredApiBase(d) : undefined;
 
   const src =
     kind === "mcp"
-      ? serverPrelude(d.appName, apiBase) + mcpTools(d, w, ops) + SERVER_MAIN
+      ? serverPrelude(d.appName, apiBase) + mcpTools(d, w, ops, gqlFields) + SERVER_MAIN
       : SCRAPER_IMPORTS + serverPrelude(d.appName, apiBase) + scraperTools(d) + SERVER_MAIN;
 
   const files: GeneratedFile[] = [
