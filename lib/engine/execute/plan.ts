@@ -100,6 +100,9 @@ export function buildSignedBuildPlan(
   if (!signingAvailable()) return null;
   const clean = (cwd ?? "").trim();
   if (!clean || /[;&|`$(){}<>\n\r*?~!#]/.test(clean)) return null;
+  // No path traversal: a `..` segment could point the build at a folder outside the
+  // one the user chose. Match it as a whole segment (allowing legit names like "..x").
+  if (/(^|[\\/])\.\.([\\/]|$)/.test(clean)) return null;
   if (NPM_RUN_SEQUENCE.some((c) => !validateNpmRun(c).ok)) return null;
 
   const planId = randomBytes(12).toString("hex");
