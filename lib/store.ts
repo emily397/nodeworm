@@ -7,6 +7,14 @@ import path from "path";
 import { neon } from "@neondatabase/serverless";
 import { freshPhases, type Bridge, type Integration } from "./engine/types";
 import { authAvailable, currentUserId } from "./engine/auth";
+import { unpackBundle } from "./engine/bundle-store";
+
+// Inflate a packed generated bundle back to its files for any client-facing read.
+// The packed blob (and empty files array) only ever lives on the stored record.
+function hydrateGenerated(it: Integration): Integration {
+  if (!it.generated?.packed) return it;
+  return { ...it, generated: { ...it.generated, files: unpackBundle(it.generated.packed), packed: undefined } };
+}
 
 const sql = process.env.DATABASE_URL ? neon(process.env.DATABASE_URL) : null;
 
@@ -164,6 +172,7 @@ export async function removeIntegration(id: string): Promise<boolean> {
 // the browser replay a consent state against the callback. Tokens never live
 // here (only masked refs in secrets), so this is the sole client-facing scrub.
 export function redactIntegration(it: Integration): Integration {
+  it = hydrateGenerated(it);
   if (!it.oauth && !it.cobrowse && !it.managedSession) return it;
   const copy = { ...it };
   delete copy.oauth;

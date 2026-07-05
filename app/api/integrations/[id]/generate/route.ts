@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getOwnedIntegration, saveIntegration } from "@/lib/store";
 import { generateBundle, type GraphqlField } from "@/lib/engine/generate";
 import { recompute } from "@/lib/engine/orchestrate";
+import { packBundle, shouldPack, unpackBundle } from "@/lib/engine/bundle-store";
 import type { OpenApiOp } from "@/lib/engine/types";
 
 // Unwrap a GraphQL introspection type ref down to its named type + kind.
@@ -126,19 +127,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const ops = it.discovery.hasPublicApi ? await openApiOps(it.discovery.probe?.openApiUrl) : [];
   const gqlFields =
     it.discovery.apiType === "graphql" ? await graphqlQueryFields(it.discovery.probe?.graphqlUrl) : [];
-  it.generated = generateBundle(it.discovery, it.wire, ops, gqlFields);
+  const bundle = generateBundle(it.discovery, it.wire, ops, gqlFields);
+  const files = bundle.files;
+  // Large bundles are stored packed (files emptied) so the Integration record stays
+  // lean; readers hydrate. The response below still returns the full files.
+  it.generated = shouldPack(files) ? { ...bundle, files: [], packed: packBundle(files) } : bundle;
   recompute(it);
   await saveIntegration(it);
 
   return NextResponse.json({
     ok: true,
-    kind: it.generated.kind,
-    connectorName: it.generated.connectorName,
-    apiBase: it.generated.apiBase,
+    kind: bundle.kind,
+    connectorName: bundle.connectorName,
+    apiBase: bundle.apiBase,
     openApiOps: ops.length,
     graphqlTools: gqlFields.length,
-    files: it.generated.files,
-    deploySteps: it.generated.deploySteps,
+    packed: Boolean(it.generated.packed),
+    files,
+    deploySteps: bundle.deploySteps,
     status: it.status,
   });
 }
@@ -149,5 +155,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const it = await getOwnedIntegration(req, id);
   if (!it) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!it.generated) return NextResponse.json({ error: "Nothing generated yet." }, { status: 404 });
-  return NextResponse.json({ ok: true, ...it.generated });
+  const files = it.generated.packed ? unpackBundle(it.generated.packed) : it.generated.files;
+  return NextResponse.json({ ok: true, ...it.generated, packed: undefined, files });
 }

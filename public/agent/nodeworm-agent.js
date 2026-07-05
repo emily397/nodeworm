@@ -162,6 +162,42 @@ function wsParseFrame(buf) {
   return { opcode: buf[0] & 0x0f, payload, consumed: offset + maskLen + len };
 }
 
+// ---- npm/node build allowlist (mirror of lib/engine/execute/npm-run.ts) ----
+// The cloud may ask the Agent to build a GENERATED connector bundle, but only via
+// this fixed set of argv shapes. install is locked to --ignore-scripts so a
+// malicious dependency's postinstall cannot execute, and any shell metacharacter
+// is rejected outright. Keep in lockstep with the tested TS validator.
+const NPM_META = /[;&|`$(){}<>\n\r*?~!#]/;
+function validateNpmRun(command) {
+  if (!Array.isArray(command) || command.length === 0) return { ok: false, reason: "empty command" };
+  if (command.some((a) => typeof a !== "string")) return { ok: false, reason: "non-string argv" };
+  if (command.some((a) => NPM_META.test(a))) return { ok: false, reason: "shell metacharacters" };
+  const [bin, ...rest] = command;
+  if (bin === "node") return rest.length === 1 && rest[0] === "dist/index.js" ? { ok: true } : { ok: false, reason: "node entrypoint only" };
+  if (bin === "npm") {
+    const sub = rest[0];
+    if (sub === "install" || sub === "ci") return rest.length === 2 && rest[1] === "--ignore-scripts" ? { ok: true } : { ok: false, reason: "install needs exactly --ignore-scripts" };
+    if (sub === "run") return rest.length === 2 && rest[1] === "build" ? { ok: true } : { ok: false, reason: "only npm run build" };
+    if (sub === "start") return rest.length === 1 ? { ok: true } : { ok: false, reason: "npm start takes no args" };
+    return { ok: false, reason: `npm ${sub} not allowed` };
+  }
+  return { ok: false, reason: `binary not allowed: ${bin}` };
+}
+
+// Run a validated npm/node command inside the bundle's working directory. npm is a
+// .cmd on Windows, so it must go through the shell there; the argv is validated
+// (no metacharacters, fixed shapes) before this point, so shell use is safe.
+function runNpm(argv, cwd, timeoutMs) {
+  return new Promise((resolve) => {
+    const v = validateNpmRun(argv);
+    if (!v.ok) { resolve({ ok: false, code: -1, out: "", err: `Command not allowed: ${v.reason}` }); return; }
+    const bin = argv[0] === "npm" && IS_WIN ? "npm.cmd" : argv[0];
+    execFile(bin, argv.slice(1), { cwd: cwd || undefined, timeout: timeoutMs || 300000, windowsHide: true, shell: IS_WIN && argv[0] === "npm", maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
+      resolve({ ok: !err, code: err && typeof err.code === "number" ? err.code : err ? 1 : 0, out: String(stdout || ""), err: String(stderr || (err && err.message) || "") });
+    });
+  });
+}
+
 // ---- execution logic ----
 function runCmd(argv, timeoutMs) {
   return new Promise((resolve) => {
@@ -225,10 +261,22 @@ async function linkQr(task, send) {
 // 127.0.0.1:<port>. The hash is checked before EVERY spawn (not just at download),
 // so a swapped binary never runs. Quick tunnels get a fresh URL each start; the
 // cloud re-verifies reachability itself before claiming anything is connected.
+// Mirror of lib/engine/execute/cloudflared.ts (the tested source of truth). Bump
+// together with that module. Only raw executables are pinned (win exe, linux
+// binaries); macOS ships a .tgz and is intentionally absent until extraction is
+// handled, so unsupported platforms get an honest "not supported" instead of a run.
 const CLOUDFLARED_VERSION = "2026.6.1";
-const CLOUDFLARED_SHA256_WIN_X64 = "5253e66f1f493c4e13539749f1aa86fd0c61e3072900fec29a44ba046a6d97e2";
-const CLOUDFLARED_URL = `https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-windows-amd64.exe`;
-const CLOUDFLARED_BIN = path.join(AGENT_DIR, "bin", "cloudflared.exe");
+const CLOUDFLARED_BASE = `https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}`;
+const CLOUDFLARED_TARGETS = {
+  "win32/x64": { file: "cloudflared-windows-amd64.exe", sha256: "5253e66f1f493c4e13539749f1aa86fd0c61e3072900fec29a44ba046a6d97e2", filename: "cloudflared.exe" },
+  "linux/x64": { file: "cloudflared-linux-amd64", sha256: "5861a10a438fe8ddcfebb3b830f83966cbf193edafce0fe2eeb198fbae1f7a22", filename: "cloudflared" },
+  "linux/arm64": { file: "cloudflared-linux-arm64", sha256: "59816ce9b16db71f5bc2a86d59b3632a96c8c3ee934bde2bc8641ee83a6070eb", filename: "cloudflared" },
+};
+function cloudflaredTarget() {
+  const t = CLOUDFLARED_TARGETS[`${process.platform}/${process.arch}`];
+  if (!t) return null;
+  return { url: `${CLOUDFLARED_BASE}/${t.file}`, sha256: t.sha256, bin: path.join(AGENT_DIR, "bin", t.filename) };
+}
 let tunnelProc = null;
 let tunnelUrl = null;
 
@@ -237,21 +285,23 @@ function sha256File(p) {
 }
 
 async function ensureCloudflared() {
-  if (!IS_WIN || process.arch !== "x64") return { ok: false, detail: "Tunnel auto-setup is Windows x64 only for now." };
-  if (sha256File(CLOUDFLARED_BIN) === CLOUDFLARED_SHA256_WIN_X64) return { ok: true };
+  const t = cloudflaredTarget();
+  if (!t) return { ok: false, detail: `Tunnel auto-setup is not supported on ${process.platform}/${process.arch} yet.` };
+  if (sha256File(t.bin) === t.sha256) return { ok: true };
   try {
-    mkdirSync(path.dirname(CLOUDFLARED_BIN), { recursive: true });
-    const r = await fetch(CLOUDFLARED_URL, { signal: AbortSignal.timeout(180000), redirect: "follow" });
+    mkdirSync(path.dirname(t.bin), { recursive: true });
+    const r = await fetch(t.url, { signal: AbortSignal.timeout(180000), redirect: "follow" });
     if (!r.ok) return { ok: false, detail: `cloudflared download failed (HTTP ${r.status}).` };
     const buf = Buffer.from(await r.arrayBuffer());
     const got = createHash("sha256").update(buf).digest("hex");
-    if (got !== CLOUDFLARED_SHA256_WIN_X64) {
-      audit({ event: "tunnel-hash-mismatch", got });
+    if (got !== t.sha256) {
+      audit({ event: "tunnel-hash-mismatch", got, platform: `${process.platform}/${process.arch}` });
       return { ok: false, detail: "cloudflared hash mismatch; refusing to run it." };
     }
-    const tmp = CLOUDFLARED_BIN + ".tmp";
+    const tmp = t.bin + ".tmp";
     writeFileSync(tmp, buf);
-    renameSync(tmp, CLOUDFLARED_BIN);
+    if (!IS_WIN) { try { require("fs").chmodSync(tmp, 0o755); } catch (_) {} }
+    renameSync(tmp, t.bin);
     return { ok: true };
   } catch (e) {
     return { ok: false, detail: String((e && e.message) || e) };
@@ -261,12 +311,13 @@ async function ensureCloudflared() {
 function startTunnel(port, timeoutMs) {
   return new Promise((resolve) => {
     if (tunnelProc && tunnelUrl) { resolve({ ok: true, url: tunnelUrl }); return; }
+    const t = cloudflaredTarget();
     // Re-verify the binary hash at spawn time, every time.
-    if (sha256File(CLOUDFLARED_BIN) !== CLOUDFLARED_SHA256_WIN_X64) {
+    if (!t || sha256File(t.bin) !== t.sha256) {
       resolve({ ok: false, detail: "cloudflared binary failed its hash check." });
       return;
     }
-    const proc = spawn(CLOUDFLARED_BIN, ["tunnel", "--url", `http://127.0.0.1:${port}`, "--no-autoupdate"], { windowsHide: true, shell: false });
+    const proc = spawn(t.bin, ["tunnel", "--url", `http://127.0.0.1:${port}`, "--no-autoupdate"], { windowsHide: true, shell: false });
     let out = "";
     let done = false;
     const finish = (res) => { if (!done) { done = true; resolve(res); } };
@@ -421,6 +472,25 @@ function createSession(socket) {
         steps.push({ n: task.n, ok, detail: ok ? "live" : "not reachable" });
         send({ type: "nw_step", n: task.n, status: ok ? "done" : "error" });
         if (!ok && task.criticalPath) { send({ type: "nw_done", ok: false, detail: "Connector not reachable." }); return; }
+      } else if (task.kind === "npm-run") {
+        send({ type: "nw_step", n: task.n, status: "running", title: task.title });
+        const v = validateNpmRun(task.command);
+        if (!v.ok) {
+          steps.push({ n: task.n, ok: false, detail: v.reason });
+          send({ type: "nw_step", n: task.n, status: "error", detail: `Blocked: ${v.reason}` });
+          send({ type: "nw_done", ok: false, detail: `Command blocked: ${v.reason}` });
+          return;
+        }
+        const res = await runNpm(task.command, task.cwd, task.timeoutMs);
+        const line = (res.out || res.err || "").slice(0, 4000);
+        if (line) send({ type: "nw_output", n: task.n, line });
+        steps.push({ n: task.n, ok: res.ok, detail: res.ok ? "built" : (res.err || "failed").slice(0, 200) });
+        send({ type: "nw_step", n: task.n, status: res.ok ? "done" : "error" });
+        if (!res.ok && task.criticalPath) {
+          if (task.rollback) await runCmd(task.rollback.command, 30000);
+          send({ type: "nw_done", ok: false, detail: `Step ${task.n} (${task.title}) failed.` });
+          return;
+        }
       } else if (task.kind === "tunnel-start") {
         send({ type: "nw_step", n: task.n, status: "running", title: task.title });
         const port = task.tunnelPort;

@@ -39,9 +39,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // One-time: consume the handshake so a result can't be replayed.
   it.execution = undefined;
 
-  if (!result.ok || !result.connectorReachable) {
+  if (!result.ok) {
     await saveIntegration(it);
     return NextResponse.json({ ok: false, detail: result.detail ?? "Setup did not complete." });
+  }
+
+  // A build-only plan (npm install + build) succeeds without a live connector yet:
+  // acknowledge honestly and record nothing as connected. The user then starts it
+  // and exposes it via the tunnel plan.
+  if (!result.connectorReachable && !result.tunnelUrl) {
+    await saveIntegration(it);
+    return NextResponse.json({ ok: true, built: true, detail: "Build complete. Start it and expose it to connect." });
   }
 
   // Tunnel result: the Agent claims a public URL now fronts the local connector.

@@ -18,8 +18,10 @@ export type TaskKind =
   | "signal-verify" // listAccounts on the linked native connector
   | "capture-session" // spawn a capture process that opens a browser; Agent shows a prompt and
                       // polls captureReadyUrl until the tool signals completion, then continues
-  | "tunnel-start"; // open a hash-pinned cloudflared quick tunnel to a local port so the
-                    // cloud can reach a localhost connector; verified by one real proxied request
+  | "tunnel-start" // open a hash-pinned cloudflared quick tunnel to a local port so the
+                   // cloud can reach a localhost connector; verified by one real proxied request
+  | "npm-run"; // run an allowlisted npm/node command (install --ignore-scripts / build /
+               // start) in a generated bundle's cwd; validated against npm-run.ts before spawn
 
 // The human-only actions the Agent must PAUSE for and never perform itself.
 export type HumanKind = "password" | "username" | "auth-approve" | "2fa" | "qr-scan" | "wait";

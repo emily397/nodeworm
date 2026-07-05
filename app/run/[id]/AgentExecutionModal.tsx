@@ -15,14 +15,23 @@ export function AgentExecutionModal({
   onClose,
   planEndpoint = "execute/plan",
   heading,
+  planBody,
+  redirectOnSuccess = true,
+  onSuccess,
 }: {
   integrationId: string;
   appName: string;
   onClose: () => void;
-  // Which signed-plan route to fetch: setup (execute/plan) or the tunnel plan
-  // (tunnel). Both return { ok, envelope, plan } and run through the same Agent WS.
+  // Which signed-plan route to fetch: setup (execute/plan), tunnel, or build. All
+  // return { ok, envelope, plan } and run through the same Agent WS.
   planEndpoint?: string;
   heading?: string;
+  // Optional JSON body for the plan request (e.g. { cwd } for the build plan).
+  planBody?: Record<string, unknown>;
+  // Build-only plans don't connect anything, so they should not redirect to the
+  // "connected" celebration. Set false to just report done and call onSuccess.
+  redirectOnSuccess?: boolean;
+  onSuccess?: () => void;
 }) {
   const [phase, setPhase] = useState<Phase>("checking");
   const [plan, setPlan] = useState<ExecutionPlan | null>(null);
@@ -74,7 +83,11 @@ export function AgentExecutionModal({
   async function loadPlan() {
     setPhase("checking");
     try {
-      const res = await fetch(`/api/integrations/${integrationId}/${planEndpoint}`, { method: "POST" });
+      const res = await fetch(`/api/integrations/${integrationId}/${planEndpoint}`, {
+        method: "POST",
+        headers: planBody ? { "content-type": "application/json" } : undefined,
+        body: planBody ? JSON.stringify(planBody) : undefined,
+      });
       const data = await res.json();
       if (!data.ok) { setMsg(data.error ?? "Could not build a setup plan."); setPhase("error"); return; }
       setPlan(data.plan);
@@ -129,9 +142,14 @@ export function AgentExecutionModal({
       }
     } else if (ev.type === "nw_done") {
       if (ev.ok) {
-        setMsg(ev.callbackOk ? "Connected." : "Setup complete, finishing up…");
         setPhase("done");
-        setTimeout(() => { window.location.href = `/run/${integrationId}?oauth=connected`; }, 1300);
+        if (redirectOnSuccess) {
+          setMsg(ev.callbackOk ? "Connected." : "Setup complete, finishing up…");
+          setTimeout(() => { window.location.href = `/run/${integrationId}?oauth=connected`; }, 1300);
+        } else {
+          setMsg("Done.");
+          onSuccess?.();
+        }
       } else {
         setMsg((ev.detail as string) ?? "Setup did not complete.");
         setPhase("error");

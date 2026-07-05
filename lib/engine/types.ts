@@ -474,6 +474,9 @@ export interface GeneratedBundle {
   language: "typescript";
   apiBase?: string;
   files: GeneratedFile[];
+  // When a bundle is large it is stored gzip+base64 packed (files emptied on the
+  // record) to keep the Integration lean; readers hydrate it back to files.
+  packed?: string;
   deploySteps: string[];
   generatedAt: number;
 }

@@ -7,6 +7,7 @@ import type { Integration } from "../types";
 import { recipeForApp } from "./recipes";
 import { buildCaptureTasks, captureRecipeAvailable, CAPTURE_CONNECTOR_PORT } from "./capture-recipe";
 import { signPlanJson, signingAvailable } from "./sign";
+import { NPM_RUN_SEQUENCE, validateNpmRun } from "./npm-run";
 import type { ExecutionPlan, SignedPlanEnvelope } from "./types";
 
 export function executionAvailableFor(appName: string, researchKind?: string, appUrl?: string): boolean {
@@ -84,6 +85,62 @@ export function buildSignedPlan(
 
   const envelope: SignedPlanEnvelope = { planJson, ...sig };
   return { envelope, plan, callbackToken };
+}
+
+// A signed plan that builds a downloaded generated connector bundle in place:
+// npm install (scripts disabled) then npm run build, run by the Agent in the
+// folder the user extracted the bundle to. Every command is re-validated against
+// the npm-run allowlist here (and again in the Agent) so a tampered plan cannot
+// smuggle a different command.
+export function buildSignedBuildPlan(
+  it: Integration,
+  origin: string,
+  cwd: string,
+): { envelope: SignedPlanEnvelope; plan: ExecutionPlan; callbackToken: string } | null {
+  if (!signingAvailable()) return null;
+  const clean = (cwd ?? "").trim();
+  if (!clean || /[;&|`$(){}<>\n\r*?~!#]/.test(clean)) return null;
+  if (NPM_RUN_SEQUENCE.some((c) => !validateNpmRun(c).ok)) return null;
+
+  const planId = randomBytes(12).toString("hex");
+  const callbackToken = randomBytes(24).toString("hex");
+  const now = Date.now();
+
+  const plan: ExecutionPlan = {
+    id: planId,
+    integrationId: it.id,
+    connectorName: `${it.appName}-build`,
+    appName: it.appName,
+    researchKind: it.research?.best?.kind ?? "rest-wrapper",
+    surface: "native-host",
+    summary: `Build the generated ${it.appName} connector in ${clean}: install dependencies (lifecycle scripts disabled) and compile it. Then start it and expose it via a tunnel.`,
+    warnings: [
+      "npm install runs with --ignore-scripts, so no dependency lifecycle script executes. Only npm build/install/start and node dist/index.js are permitted.",
+      "You can pause or abort at any time.",
+    ],
+    humanActions: ["Approve this plan. The Agent installs and builds the connector in the folder you chose."],
+    connectorUrl: `http://localhost:8787/health`,
+    tasks: NPM_RUN_SEQUENCE.map((command, i) => ({
+      n: i + 1,
+      kind: "npm-run" as const,
+      title: command.join(" "),
+      description: i === 0 ? "Install dependencies with lifecycle scripts disabled." : "Compile the connector.",
+      command,
+      cwd: clean,
+      requiresHuman: false,
+      criticalPath: true,
+      timeoutMs: 300000,
+    })),
+    callbackUrl: `${origin}/api/integrations/${it.id}/execute/callback`,
+    callbackToken,
+    createdAt: now,
+    expiresAt: now + 60 * 60 * 1000,
+  };
+
+  const planJson = JSON.stringify(plan);
+  const sig = signPlanJson(planJson);
+  if (!sig) return null;
+  return { envelope: { planJson, ...sig }, plan, callbackToken };
 }
 
 // A signed single-task plan that makes a LOCAL connector cloud-reachable via a

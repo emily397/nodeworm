@@ -1566,6 +1566,8 @@ function GeneratedConnectorCard({ integration }: { integration: Integration }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [showTunnel, setShowTunnel] = useState(false);
+  const [buildCwd, setBuildCwd] = useState("");
+  const [showBuild, setShowBuild] = useState(false);
 
   async function generate() {
     if (busy) return;
@@ -1652,12 +1654,27 @@ function GeneratedConnectorCard({ integration }: { integration: Integration }) {
             </div>
             <ol className="space-y-1 mb-2 text-[0.72rem]" style={{ color: "var(--color-ink-soft)" }}>
               <li>1. Run <code className="font-mono text-[0.66rem]">sh {meta?.connectorName ?? "connector"}-setup.sh</code> in an empty folder.</li>
-              <li>2. <code className="font-mono text-[0.66rem]">npm install &amp;&amp; npm run build</code>, then <code className="font-mono text-[0.66rem]">TRANSPORT=http npm start</code>.</li>
-              <li>3. Expose it so NodeWorm can verify one real read:</li>
+              <li>2. Build it (the Agent can, below), then <code className="font-mono text-[0.66rem]">TRANSPORT=http npm start</code>.</li>
+              <li>3. Expose it so NodeWorm can verify one real read.</li>
             </ol>
-            <button onClick={() => setShowTunnel(true)} className="btn btn-signal text-sm w-full justify-center">
-              ⚡ Expose it via a secure tunnel
-            </button>
+            {/* The Agent installs (scripts disabled) + builds it in the folder you
+                extracted the bundle to. Allowlisted commands only. */}
+            <input
+              value={buildCwd}
+              onChange={(e) => setBuildCwd(e.target.value)}
+              placeholder="folder you extracted the bundle to (for the Agent to build it)"
+              className="w-full bg-transparent outline-none font-mono text-xs px-2.5 py-2 rounded mb-2"
+              style={{ border: "1px solid var(--color-line-2)", color: "var(--color-ink)" }}
+              aria-label="Bundle folder"
+            />
+            <div className="flex gap-2">
+              <button onClick={() => buildCwd.trim() && setShowBuild(true)} disabled={!buildCwd.trim()} className="btn btn-ink text-sm flex-1 justify-center">
+                Build it for me
+              </button>
+              <button onClick={() => setShowTunnel(true)} className="btn btn-signal text-sm flex-1 justify-center">
+                ⚡ Expose via tunnel
+              </button>
+            </div>
             <p className="text-[0.6rem] mt-1.5" style={{ color: "var(--color-muted)" }}>
               The NodeWorm Agent opens a hash-pinned Cloudflare tunnel to your local connector, then NodeWorm makes one real
               request through it. No account, no port-forwarding.
@@ -1669,6 +1686,17 @@ function GeneratedConnectorCard({ integration }: { integration: Integration }) {
         <p className="font-mono text-[0.62rem] mt-2" style={{ color: "var(--color-muted)" }}>
           {msg}
         </p>
+      )}
+      {showBuild && (
+        <AgentExecutionModal
+          integrationId={integration.id}
+          appName={integration.appName}
+          planEndpoint="build"
+          planBody={{ cwd: buildCwd.trim() }}
+          redirectOnSuccess={false}
+          heading={`nodeworm agent · build ${integration.appName}`}
+          onClose={() => setShowBuild(false)}
+        />
       )}
       {showTunnel && (
         <AgentExecutionModal
