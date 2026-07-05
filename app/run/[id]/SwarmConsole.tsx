@@ -1759,6 +1759,29 @@ function RecoveryCard({
   const [agentStep, setAgentStep] = useState<string | null>(null);
   const agentPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const agentCheckingRef = useRef(false);
+  // The agent's live browser opens as a real, centered popup window (not a cramped
+  // embedded frame): a non-technical user just sees a normal sign-in window, does
+  // the login if asked, and NodeWorm's agent drives everything else.
+  const agentWinRef = useRef<Window | null>(null);
+
+  function openAgentWindow(url: string): Window | null {
+    if (!url) return null;
+    // Reuse the existing window if it is still open; otherwise open a fresh one.
+    if (agentWinRef.current && !agentWinRef.current.closed) {
+      try { agentWinRef.current.location.href = url; agentWinRef.current.focus(); return agentWinRef.current; } catch { /* fall through */ }
+    }
+    const w = 520, h = 700;
+    const left = Math.max(0, (window.screenLeft ?? window.screenX ?? 0) + ((window.innerWidth || 1024) - w) / 2);
+    const top = Math.max(0, (window.screenTop ?? window.screenY ?? 0) + ((window.innerHeight || 768) - h) / 2);
+    const win = window.open(url, "nodeworm-agent", `popup=1,width=${w},height=${h},left=${left},top=${top}`);
+    if (win) { agentWinRef.current = win; try { win.focus(); } catch { /* focus may be blocked */ } }
+    return win;
+  }
+
+  function closeAgentWindow() {
+    try { if (agentWinRef.current && !agentWinRef.current.closed) agentWinRef.current.close(); } catch { /* cross-origin close guard */ }
+    agentWinRef.current = null;
+  }
 
   // Gated-portal consent: a portal above low risk needs explicit, recorded consent
   // to the accurate ToS/account-risk caveat before NodeWorm automates it.
@@ -1801,18 +1824,23 @@ function RecoveryCard({
     }
   }
 
-  // Launch the AI agent and embed its live browser. The agent works on its own; the
-  // user only signs in inside the embedded frame if a login wall appears.
+  // Launch the AI agent and open its live browser as a popup window. The agent works
+  // on its own; the user only signs in inside that window if a login wall appears.
   async function startAgent() {
     if (agentBusy || !consentSatisfied) return;
     setAgentBusy(true);
-    setAgentMsg("Starting the AI agent…");
+    setAgentMsg("Starting…");
     try {
       const res = await fetch(`/api/integrations/${integration.id}/oauth/agent/start`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to start the agent");
       setAgentLive(data.liveViewUrl);
-      setAgentMsg("The agent is registering the app. Sign in inside the window if it asks; do nothing else.");
+      const win = data.liveViewUrl ? openAgentWindow(data.liveViewUrl) : null;
+      setAgentMsg(
+        win
+          ? `A sign-in window opened. If ${integration.appName} asks you to log in, do that; NodeWorm does the rest.`
+          : `Click "Open the sign-in window" below, then just log in if ${integration.appName} asks.`,
+      );
     } catch (e) {
       setAgentMsg(e instanceof Error ? e.message : "Failed to start the AI agent");
     }
@@ -1829,11 +1857,13 @@ function RecoveryCard({
       const data = await res.json();
       if (data.ok) {
         stopAgentWatching();
+        closeAgentWindow();
         window.location.href = `/api/integrations/${integration.id}/oauth/start`;
         return;
       }
       if (data.pin === "required") {
         stopAgentWatching();
+        closeAgentWindow();
         setAgentMsg("Found the app keys. Unlock your vault with your PIN to finish.");
         requestUnlock(() => {
           // Re-poll once unlocked: the run's output is still readable, so this captures.
@@ -1843,13 +1873,17 @@ function RecoveryCard({
       }
       if (data.step) setAgentStep(data.step);
       if (data.state === "needs_login") {
-        setAgentMsg(`Sign into ${integration.appName} in the window above; the agent will continue automatically.`);
+        // Reopen only if the user closed it, so we don't steal focus every tick.
+        if (!agentWinRef.current || agentWinRef.current.closed) openAgentWindow(agentLive ?? "");
+        setAgentMsg(`Sign into ${integration.appName} in the sign-in window; NodeWorm continues automatically. (Click "Open the sign-in window" if you closed it.)`);
       } else if (data.state === "blocked") {
         stopAgentWatching();
+        closeAgentWindow();
         setAgentLive(null);
         setAgentMsg(data.note ?? `${integration.appName} requires a manual review NodeWorm can't pass. Use the manual steps below.`);
       } else if (data.state === "failed") {
         stopAgentWatching();
+        closeAgentWindow();
         setAgentLive(null);
         setAgentMsg(data.note ? `The agent stopped: ${data.note}. You can retry or use the manual steps below.` : "The agent stopped before finishing. Retry or use the manual steps below.");
       }
@@ -1872,7 +1906,7 @@ function RecoveryCard({
       }
       void pollAgent();
     }, 5000);
-    return () => stopAgentWatching();
+    return () => { stopAgentWatching(); closeAgentWindow(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentLive]);
 
@@ -2073,28 +2107,26 @@ function RecoveryCard({
               {agentBusy ? "Starting the agent…" : "Let NodeWorm connect it for me"}
             </button>
           ) : (
-            <div className="space-y-2">
-              <div
-                className="rounded-lg overflow-hidden"
-                style={{ border: "1px solid var(--color-line-2)", background: "var(--color-ink)" }}
-              >
-                <iframe
-                  src={agentLive}
-                  title={`${integration.appName} registration`}
-                  className="w-full"
-                  style={{ height: 420, border: "none", display: "block" }}
-                  allow="clipboard-read; clipboard-write"
-                />
-              </div>
-              <div className="flex items-center gap-2 font-mono text-[0.58rem] uppercase tracking-wider" style={{ color: "var(--color-teal)" }}>
+            <div className="rounded-lg p-3" style={{ border: "1px solid var(--color-teal)", background: "var(--color-paper-2)" }}>
+              <div className="flex items-center gap-2 font-mono text-[0.58rem] uppercase tracking-wider mb-1.5" style={{ color: "var(--color-teal)" }}>
                 <span className="dot animate-pulse" style={{ background: "var(--color-teal)" }} />
-                agent working
+                nodeworm is working in the sign-in window
               </div>
+              <p className="text-[0.72rem] mb-2.5" style={{ color: "var(--color-ink-soft)" }}>
+                A separate sign-in window is open. You only need to log into {integration.appName} there if it asks;
+                NodeWorm registers the app and finishes the connection for you. Keep this tab open.
+              </p>
               {agentStep && (
-                <p className="font-mono text-[0.62rem]" style={{ color: "var(--color-muted)" }}>
+                <p className="font-mono text-[0.62rem] mb-2 truncate" style={{ color: "var(--color-muted)" }}>
                   {agentStep}
                 </p>
               )}
+              <button
+                onClick={() => agentLive && openAgentWindow(agentLive)}
+                className="btn btn-ink text-sm w-full justify-center"
+              >
+                Open the sign-in window
+              </button>
             </div>
           )}
           {agentMsg && (
