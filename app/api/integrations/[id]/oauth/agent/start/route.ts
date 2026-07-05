@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getIntegration, saveIntegration } from "@/lib/store";
 import { agentDriverStatus, startPortalRegistration } from "@/lib/engine/browseruse";
+import { resolvePortalUrl } from "@/lib/engine/recovery/portal-resolve";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,8 +35,13 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (!recipe?.portalUrl) return NextResponse.json({ error: "No developer portal is known for this app yet." }, { status: 400 });
   const redirectUri = recipe.redirectUri ?? `${new URL(_req.url).origin}/api/integrations/${id}/oauth/callback`;
 
+  // The stored portalUrl is often a guessed API path (e.g. app/api/v4/applications)
+  // that 404s in a browser. Validate it and, if it's an API/dead URL, discover the
+  // app's real registration page by search so the agent starts somewhere it can act.
+  const { url: portalUrl } = await resolvePortalUrl(it.appName, recipe.portalUrl);
+
   const run = await startPortalRegistration({
-    portalUrl: recipe.portalUrl,
+    portalUrl,
     appName: it.appName,
     redirectUri,
     scopes: recipe.scopes ?? [],
