@@ -1719,6 +1719,37 @@ function ExternalArrow() {
   );
 }
 
+// Step summaries that mean the agent has hit a human-only wall (sign-in), the one
+// moment we surface the popup to the user.
+const AGENT_LOGIN_HINT = /log ?in|sign[ -]?in|login|authenticat|password|verif|two[ -]?factor|2fa|captcha|credential|consent|authorize/i;
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+}
+
+// A calm, branded waiting screen shown in the popup while the agent works, so the
+// user never watches it navigate. Static markup; the only dynamic value (app name)
+// is HTML-escaped.
+function agentWaitingHtml(appName: string): string {
+  const app = escapeHtml(appName);
+  return `<!doctype html><meta charset="utf-8"><title>Connecting ${app}</title>
+<style>
+  html,body{height:100%;margin:0}
+  body{background:#14100c;color:#f4eee1;font:16px/1.5 ui-sans-serif,system-ui,sans-serif;display:grid;place-items:center;text-align:center}
+  .wrap{max-width:340px;padding:32px}
+  .dot{width:12px;height:12px;border-radius:50%;background:#9fd80a;margin:0 auto 20px;animation:p 1.1s ease-in-out infinite}
+  @keyframes p{0%,100%{opacity:.35;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
+  h1{font-size:19px;margin:0 0 10px;font-weight:700}
+  p{margin:0;color:#b8b0a2;font-size:14px}
+  .app{color:#f4eee1}
+</style>
+<div class="wrap">
+  <div class="dot"></div>
+  <h1>Connecting <span class="app">${app}</span></h1>
+  <p>NodeWorm is setting this up for you. No action needed yet. If ${app} asks you to sign in, this window will show its login and you just log in here.</p>
+</div>`;
+}
+
 // The "crack it" recovery card: when no OAuth client exists, walk the user
 // through registering one on the provider's portal, then capture the pasted-back
 // client id/secret and run the real consent. The user does only the portal clicks.
@@ -1757,12 +1788,18 @@ function RecoveryCard({
   const [agentBusy, setAgentBusy] = useState(false);
   const [agentMsg, setAgentMsg] = useState<string | null>(null);
   const [agentStep, setAgentStep] = useState<string | null>(null);
+  // Only true once NodeWorm actually needs the human (a sign-in wall). Until then the
+  // user sees a calm "working, no action needed" state, never the agent's busywork.
+  const [agentNeedsUser, setAgentNeedsUser] = useState(false);
   const agentPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const agentCheckingRef = useRef(false);
-  // The agent's live browser opens as a real, centered popup window (not a cramped
-  // embedded frame): a non-technical user just sees a normal sign-in window, does
-  // the login if asked, and NodeWorm's agent drives everything else.
+  // The agent runs in a hosted cloud browser. We open ONE popup on the user's click
+  // (browsers only allow popups from a gesture) showing a calm "please wait" screen,
+  // then swap it to the live browser + focus it ONLY when a sign-in is actually
+  // needed. So the user isn't asked to watch the agent work or click anything early.
   const agentWinRef = useRef<Window | null>(null);
+  const agentSurfacedRef = useRef(false); // have we swapped the popup to the live view?
+  const agentStartedAtRef = useRef(0);
 
   function openAgentWindow(url: string): Window | null {
     if (!url) return null;
@@ -1776,6 +1813,36 @@ function RecoveryCard({
     const win = window.open(url, "nodeworm-agent", `popup=1,width=${w},height=${h},left=${left},top=${top}`);
     if (win) { agentWinRef.current = win; try { win.focus(); } catch { /* focus may be blocked */ } }
     return win;
+  }
+
+  // Open the popup immediately on the click (so it isn't blocked) showing a calm
+  // branded waiting screen. It stays here, unobtrusive, until sign-in is needed.
+  function openAgentWaiting(): Window | null {
+    const w = 520, h = 700;
+    const left = Math.max(0, (window.screenLeft ?? window.screenX ?? 0) + ((window.innerWidth || 1024) - w) / 2);
+    const top = Math.max(0, (window.screenTop ?? window.screenY ?? 0) + ((window.innerHeight || 768) - h) / 2);
+    const win = window.open("", "nodeworm-agent", `popup=1,width=${w},height=${h},left=${left},top=${top}`);
+    if (win) {
+      agentWinRef.current = win;
+      try { win.document.write(agentWaitingHtml(integration.appName)); win.document.close(); } catch { /* about:blank write blocked; fine */ }
+    }
+    return win;
+  }
+
+  // Swap the waiting popup to the live browser and bring it forward. Called exactly
+  // when the human is needed (a sign-in wall), so this is the one moment they act.
+  function surfaceLiveView() {
+    if (agentSurfacedRef.current) return;
+    agentSurfacedRef.current = true;
+    setAgentNeedsUser(true);
+    if (agentLive) {
+      if (agentWinRef.current && !agentWinRef.current.closed) {
+        try { agentWinRef.current.location.href = agentLive; agentWinRef.current.focus(); } catch { openAgentWindow(agentLive); }
+      } else {
+        openAgentWindow(agentLive);
+      }
+    }
+    setAgentMsg(`Sign into ${integration.appName} in the window. That is the only thing you need to do; NodeWorm finishes the rest.`);
   }
 
   function closeAgentWindow() {
@@ -1824,24 +1891,26 @@ function RecoveryCard({
     }
   }
 
-  // Launch the AI agent and open its live browser as a popup window. The agent works
-  // on its own; the user only signs in inside that window if a login wall appears.
+  // Launch the AI agent. A calm popup opens on this click (browsers require a gesture)
+  // and shows a "please wait" screen; NodeWorm only swaps it to the live browser and
+  // brings it forward when a sign-in is actually needed. The user watches nothing and
+  // clicks nothing until that one moment.
   async function startAgent() {
     if (agentBusy || !consentSatisfied) return;
     setAgentBusy(true);
+    setAgentNeedsUser(false);
+    agentSurfacedRef.current = false;
+    agentStartedAtRef.current = Date.now();
+    const win = openAgentWaiting(); // opened within the click gesture
     setAgentMsg("Starting…");
     try {
       const res = await fetch(`/api/integrations/${integration.id}/oauth/agent/start`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to start the agent");
       setAgentLive(data.liveViewUrl);
-      const win = data.liveViewUrl ? openAgentWindow(data.liveViewUrl) : null;
-      setAgentMsg(
-        win
-          ? `A sign-in window opened. If ${integration.appName} asks you to log in, do that; NodeWorm does the rest.`
-          : `Click "Open the sign-in window" below, then just log in if ${integration.appName} asks.`,
-      );
+      setAgentMsg(`NodeWorm is connecting ${integration.appName} for you. No action needed yet; you'll only be asked to sign in if ${integration.appName} requires it.`);
     } catch (e) {
+      win?.close();
       setAgentMsg(e instanceof Error ? e.message : "Failed to start the AI agent");
     }
     setAgentBusy(false);
@@ -1872,11 +1941,21 @@ function RecoveryCard({
         return;
       }
       if (data.step) setAgentStep(data.step);
-      if (data.state === "needs_login") {
-        // Reopen only if the user closed it, so we don't steal focus every tick.
+      // Surface the popup (swap it to the live browser + bring it forward) EXACTLY
+      // when the human is needed: the agent reports a login wall, its step summary
+      // mentions signing in, or it has run long enough that it is almost certainly
+      // waiting at one. Until then the user sees only the calm waiting screen.
+      if (!agentSurfacedRef.current && data.state !== "creds_ready") {
+        const atLogin =
+          data.state === "needs_login" ||
+          AGENT_LOGIN_HINT.test(String(data.step ?? "")) ||
+          Date.now() - agentStartedAtRef.current > 25000;
+        if (atLogin) surfaceLiveView();
+      } else if (data.state === "needs_login") {
+        // Already surfaced: just reopen if the user closed the window.
         if (!agentWinRef.current || agentWinRef.current.closed) openAgentWindow(agentLive ?? "");
-        setAgentMsg(`Sign into ${integration.appName} in the sign-in window; NodeWorm continues automatically. (Click "Open the sign-in window" if you closed it.)`);
-      } else if (data.state === "blocked") {
+      }
+      if (data.state === "blocked") {
         stopAgentWatching();
         closeAgentWindow();
         setAgentLive(null);
@@ -2079,9 +2158,9 @@ function RecoveryCard({
             <span className="dot" style={{ background: "var(--color-teal)" }} /> nodeworm does it for you
           </div>
           <p className="text-xs mb-2" style={{ color: "var(--color-ink-soft)" }}>
-            NodeWorm&apos;s AI registers the {integration.appName} app inside the window below: it navigates, creates the app, sets
-            the redirect URI and scopes, and reads back the keys. You only sign into {integration.appName} in the window if it asks.
-            Nothing else.
+            NodeWorm&apos;s AI registers the {integration.appName} app for you in the background: it navigates, creates the app, sets
+            the redirect URI and scopes, and reads back the keys. A window only pops up if {integration.appName} needs you to sign
+            in. Nothing else.
           </p>
           {pa && (
             <div className="mb-2.5 rounded px-2.5 py-2" style={{ border: `1px solid ${riskColor(pa.risk)}`, background: "var(--color-paper)" }}>
@@ -2106,27 +2185,36 @@ function RecoveryCard({
             <button onClick={startAgent} disabled={agentBusy || !consentSatisfied} className="btn btn-signal text-sm w-full justify-center">
               {agentBusy ? "Starting the agent…" : "Let NodeWorm connect it for me"}
             </button>
-          ) : (
-            <div className="rounded-lg p-3" style={{ border: "1px solid var(--color-teal)", background: "var(--color-paper-2)" }}>
-              <div className="flex items-center gap-2 font-mono text-[0.58rem] uppercase tracking-wider mb-1.5" style={{ color: "var(--color-teal)" }}>
-                <span className="dot animate-pulse" style={{ background: "var(--color-teal)" }} />
-                nodeworm is working in the sign-in window
+          ) : agentNeedsUser ? (
+            // The one moment the user acts: sign in. The popup was brought forward.
+            <div className="rounded-lg p-3" style={{ border: "1px solid var(--color-signal)", background: "var(--color-paper-2)" }}>
+              <div className="flex items-center gap-2 font-mono text-[0.58rem] uppercase tracking-wider mb-1.5" style={{ color: "var(--color-signal)" }}>
+                <span className="dot animate-pulse" style={{ background: "var(--color-signal)" }} />
+                sign into {integration.appName.toLowerCase()} in the window
               </div>
               <p className="text-[0.72rem] mb-2.5" style={{ color: "var(--color-ink-soft)" }}>
-                A separate sign-in window is open. You only need to log into {integration.appName} there if it asks;
-                NodeWorm registers the app and finishes the connection for you. Keep this tab open.
+                A window opened with {integration.appName}&apos;s sign-in. Just log in there. That is the only step;
+                NodeWorm does everything else and connects you automatically.
               </p>
-              {agentStep && (
-                <p className="font-mono text-[0.62rem] mb-2 truncate" style={{ color: "var(--color-muted)" }}>
-                  {agentStep}
-                </p>
-              )}
               <button
                 onClick={() => agentLive && openAgentWindow(agentLive)}
-                className="btn btn-ink text-sm w-full justify-center"
+                className="btn btn-signal text-sm w-full justify-center"
               >
-                Open the sign-in window
+                Show the sign-in window
               </button>
+            </div>
+          ) : (
+            // Calm working state: the agent runs in the background; no action needed,
+            // nothing to watch, nothing to click.
+            <div className="rounded-lg p-3" style={{ border: "1px solid var(--color-teal)", background: "var(--color-paper-2)" }}>
+              <div className="flex items-center gap-2 font-mono text-[0.58rem] uppercase tracking-wider" style={{ color: "var(--color-teal)" }}>
+                <span className="dot animate-pulse" style={{ background: "var(--color-teal)" }} />
+                connecting {integration.appName.toLowerCase()} · no action needed yet
+              </div>
+              <p className="text-[0.72rem] mt-1.5" style={{ color: "var(--color-ink-soft)" }}>
+                NodeWorm is setting this up in the background. You&apos;ll only be asked to sign in if {integration.appName} requires
+                it, and a window will pop up for that. Keep this tab open.
+              </p>
             </div>
           )}
           {agentMsg && (
