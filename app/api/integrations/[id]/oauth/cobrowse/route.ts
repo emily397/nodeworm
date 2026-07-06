@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getIntegration, saveIntegration } from "@/lib/store";
 import { cobrowseStatus, createSession } from "@/lib/engine/cobrowse";
+import { isAdmin } from "@/lib/engine/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +14,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
   const it = await getIntegration(id);
   if (!it) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!(await isAdmin(_req))) {
+    return NextResponse.json({ error: "A NodeWorm admin sets this app up once; then it is one-click for you.", admin: false }, { status: 403 });
+  }
 
   // Gated portals: never automate a blocked one, and require recorded consent for
   // anything above low risk. The original allowlisted apps carry no portalAutomation

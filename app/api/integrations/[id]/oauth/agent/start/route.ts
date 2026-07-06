@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getIntegration, saveIntegration } from "@/lib/store";
 import { agentDriverStatus, startPortalRegistration } from "@/lib/engine/browseruse";
 import { resolvePortalUrl } from "@/lib/engine/recovery/portal-resolve";
+import { isAdmin } from "@/lib/engine/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +18,11 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
   const it = await getIntegration(id);
   if (!it) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  // One-time-per-app registration is admin-only: it creates the shared OAuth app.
+  if (!(await isAdmin(_req))) {
+    return NextResponse.json({ error: "A NodeWorm admin sets this app up once; then it is one-click for you.", admin: false }, { status: 403 });
+  }
 
   const pa = it.recovery?.portalAutomation;
   if (pa) {

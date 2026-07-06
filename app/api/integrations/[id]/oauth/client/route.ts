@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getIntegration } from "@/lib/store";
 import { storeClientCreds, vaultStatus } from "@/lib/engine/vault";
-import { currentUserId, requireVaultUnlock } from "@/lib/engine/auth";
+import { currentUserId, isAdmin, requireVaultUnlock } from "@/lib/engine/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +22,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const it = await getIntegration(id);
   if (!it) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  // The captured client is shared app-wide, so registering it is an admin action.
+  if (!(await isAdmin(req))) {
+    return NextResponse.json({ error: "A NodeWorm admin sets this app up once; then it is one-click for you.", admin: false }, { status: 403 });
+  }
 
   const body = (await req.json().catch(() => ({}))) as { clientId?: string; clientSecret?: string };
   const clientId = body.clientId?.trim();

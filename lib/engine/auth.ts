@@ -185,6 +185,27 @@ export async function currentUserId(req: Request): Promise<string | undefined> {
   return (await currentUser(req))?.id;
 }
 
+// ---- Admin gate -----------------------------------------------------------
+// Only an admin runs the one-time-per-app OAuth-app registration (under a
+// NodeWorm-owned developer account); the captured client is then shared, so every
+// end user just does the normal OAuth consent. Opt-in: with NODEWORM_ADMIN_EMAILS
+// unset, everyone is admin (single-operator default, no behaviour change). Once set,
+// only those emails can register apps.
+export function emailIsAdmin(email: string | undefined, allowlist: string | undefined): boolean {
+  const list = (allowlist ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  if (list.length === 0) return true;
+  return Boolean(email) && list.includes(email!.toLowerCase());
+}
+
+export async function isAdmin(req: Request): Promise<boolean> {
+  if (!authAvailable()) return true; // anonymous single-operator deployment
+  const user = await currentUser(req);
+  return emailIsAdmin(user?.email, process.env.NODEWORM_ADMIN_EMAILS);
+}
+
 // ---- PIN vault gate -------------------------------------------------------
 // A 4-digit PIN is ~10^4 entropy: useless as a standalone encryption key. So the
 // PIN is NOT mixed into vault-crypto. It is an ONLINE-checked session-unlock: a

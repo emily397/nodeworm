@@ -1784,6 +1784,10 @@ function RecoveryCard({
   // the agent reads back the keys and runs the consent. This supersedes the older
   // DOM-scrape cobrowse path whenever the agent driver is configured.
   const [agentAvailable, setAgentAvailable] = useState(false);
+  // Whether the current user may run the one-time-per-app setup. Non-admins never
+  // see the automated registration or the remote browser; they get a clean "an admin
+  // will set this up, then it's one-click" state. null = still loading.
+  const [isAdminUser, setIsAdminUser] = useState<boolean | null>(null);
   const [agentLive, setAgentLive] = useState<string | null>(null);
   const [agentBusy, setAgentBusy] = useState(false);
   const [agentMsg, setAgentMsg] = useState<string | null>(null);
@@ -1882,6 +1886,10 @@ function RecoveryCard({
       .then((r) => r.json())
       .then((d) => setAgentAvailable(Boolean(d.available)))
       .catch(() => {});
+    fetch("/api/me")
+      .then((r) => r.json())
+      .then((d) => setIsAdminUser(Boolean(d.admin)))
+      .catch(() => setIsAdminUser(false));
   }, []);
 
   function stopAgentWatching() {
@@ -2138,10 +2146,23 @@ function RecoveryCard({
         </span>
       </div>
 
+      {isAdminUser === false ? (
+        // Non-admin end user: never sees the automated registration or a remote
+        // browser. A clean, honest state; an admin does the one-time setup, then it's
+        // one-click for everyone.
+        <div className="rounded-lg p-3" style={{ border: "1px solid var(--color-line-2)", background: "var(--color-paper-2)" }}>
+          <p className="text-sm" style={{ color: "var(--color-ink-soft)" }}>
+            {integration.appName} isn&apos;t set up for one-click connection yet. A NodeWorm admin needs to do a quick one-time
+            setup for {integration.appName} (just once, for everyone). It&apos;s been flagged; once it&apos;s done you&apos;ll
+            connect {integration.appName} instantly with its own sign-in, nothing to install or copy-paste.
+          </p>
+        </div>
+      ) : (
+      <>
       <p className="text-sm mb-3" style={{ color: "var(--color-ink-soft)" }}>
-        No one has connected {integration.appName} through NodeWorm yet, so NodeWorm sets it up now, once. It registers the app
-        for you and fills everything in; you only sign into {integration.appName} if it asks. After this, {integration.appName} is
-        a one-click, real-sign-in connection for you and everyone else, no setup ever again.
+        No one has connected {integration.appName} through NodeWorm yet, so as an admin you set it up now, once. NodeWorm
+        registers the app and fills everything in; you only sign into {integration.appName} if it asks. After this,
+        {" "}{integration.appName} is a one-click, real-sign-in connection for every user, no setup ever again.
       </p>
 
       {agentAvailable && pa?.risk !== "blocked" && (
@@ -2396,6 +2417,8 @@ function RecoveryCard({
         )}
       </div>
       </details>
+      </>
+      )}
     </div>
   );
 }
