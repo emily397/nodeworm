@@ -1,0 +1,75 @@
+#cloud-config
+# Paste as the "Initialization script" (cloud-init) when creating the Oracle Ampere
+# A1 instance. Installs Docker + Compose, drops the bridge files, and leaves it ready
+# for you to fill /opt/signal-bridge/.env with two secrets and run `docker compose up -d`.
+# (Kept a manual `up` so no secret is ever baked into cloud-init.)
+
+package_update: true
+packages:
+  - ca-certificates
+  - curl
+  - openssl
+
+write_files:
+  - path: /opt/signal-bridge/Caddyfile
+    permissions: "0644"
+    content: |
+      {
+      	admin off
+      	auto_https off
+      }
+      :8080 {
+      	@authorized header Authorization "Bearer {$BRIDGE_TOKEN}"
+      	handle @authorized {
+      		reverse_proxy signal:8080
+      	}
+      	respond "Unauthorized" 401
+      }
+
+  - path: /opt/signal-bridge/docker-compose.yml
+    permissions: "0644"
+    content: |
+      services:
+        signal:
+          image: bbernhard/signal-cli-rest-api@sha256:2399d449123cdad56c4d859277e3b9127e1a00c4d2ab4601c239882609286cf8
+          environment:
+            - MODE=json-rpc
+          volumes:
+            - signal-data:/home/.local/share/signal-cli-rest-api
+          restart: unless-stopped
+          networks: [bridge]
+        caddy:
+          image: caddy@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17
+          depends_on: [signal]
+          environment:
+            - BRIDGE_TOKEN=${BRIDGE_TOKEN}
+          volumes:
+            - ./Caddyfile:/etc/caddy/Caddyfile:ro
+            - caddy-data:/data
+          restart: unless-stopped
+          networks: [bridge]
+        cloudflared:
+          image: cloudflare/cloudflared@sha256:6d91c121b803126f7a5344005d17a9324788fc09d305b6e2560ec6040a7ae283
+          command: tunnel --no-autoupdate run
+          environment:
+            - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+          depends_on: [caddy]
+          restart: unless-stopped
+          networks: [bridge]
+      volumes:
+        signal-data:
+        caddy-data:
+      networks:
+        bridge:
+
+runcmd:
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - echo "deb [arch=arm64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list
+  - apt-get update
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  - systemctl enable --now docker
+  # Seed a strong bridge token; you still add the Cloudflare tunnel token before `up`.
+  - 'printf "BRIDGE_TOKEN=%s\nCLOUDFLARE_TUNNEL_TOKEN=replace-me\n" "$(openssl rand -hex 32)" > /opt/signal-bridge/.env'
+  - chmod 600 /opt/signal-bridge/.env

@@ -1,0 +1,45 @@
+# NodeWorm Signal hosted-connector, persistent, on Oracle Cloud Always Free (Ampere A1).
+# signal-cli-rest-api has NO built-in auth, so Caddy enforces the exact Bearer token
+# NodeWorm sends (SIGNAL_BRIDGE_TOKEN). Cloudflare Tunnel gives HTTPS with no open ports.
+# Only human step after this is up: scan the device-link QR once.
+
+services:
+  signal:
+    # Digest-pinned multi-arch index (resolved 2026-07-06); Docker pulls the arm64
+    # variant on Ampere A1 automatically. Matches lib/engine/hosted-connectors.ts.
+    image: bbernhard/signal-cli-rest-api@sha256:2399d449123cdad56c4d859277e3b9127e1a00c4d2ab4601c239882609286cf8
+    environment:
+      - MODE=json-rpc            # persistent signal-cli daemon (fast, holds the link)
+    volumes:
+      - signal-data:/home/.local/share/signal-cli-rest-api   # linked-device state survives restarts/reboots
+    restart: unless-stopped
+    networks: [bridge]
+    # No host ports: only Caddy reaches it, over the private compose network.
+
+  caddy:
+    image: caddy@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17  # caddy:2.8-alpine (arm64-inclusive index, resolved 2026-07-06)
+    depends_on: [signal]
+    environment:
+      - BRIDGE_TOKEN=${BRIDGE_TOKEN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    restart: unless-stopped
+    networks: [bridge]
+    # Listens on :8080 inside the network; cloudflared fronts it with HTTPS.
+
+  cloudflared:
+    image: cloudflare/cloudflared@sha256:6d91c121b803126f7a5344005d17a9324788fc09d305b6e2560ec6040a7ae283  # cloudflared:latest (arm64-inclusive index, resolved 2026-07-06)
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}   # connector token from Cloudflare Zero Trust
+    depends_on: [caddy]
+    restart: unless-stopped
+    networks: [bridge]
+
+volumes:
+  signal-data:
+  caddy-data:
+
+networks:
+  bridge:

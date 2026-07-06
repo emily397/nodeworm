@@ -45,7 +45,9 @@ const SIGNAL: HostedConnectorSpec = {
   accountsPath: "/v1/accounts",
   linked: "accounts-nonempty",
   consentGated: true,
-  image: "bbernhard/signal-cli-rest-api:latest",
+  // Digest-pinned (multi-arch index digest of :latest, resolved 2026-07-06) so the
+  // provisioned bridge runs a fixed, auditable image on any arch (incl. Ampere A1).
+  image: "bbernhard/signal-cli-rest-api@sha256:2399d449123cdad56c4d859277e3b9127e1a00c4d2ab4601c239882609286cf8",
   upstreamPort: 8080,
   upstreamStart: "/entrypoint.sh",
   verified: true,

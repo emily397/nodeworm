@@ -1,0 +1,18 @@
+# Bearer gate in front of signal-cli-rest-api (which has no auth of its own).
+# NodeWorm's verifyConnector sends `Authorization: Bearer <SIGNAL_BRIDGE_TOKEN>`;
+# this only proxies requests carrying the exact same token, everything else -> 401.
+# Plain HTTP on :8080 because Cloudflare Tunnel terminates TLS at the edge; this
+# port is never exposed to the internet (only cloudflared reaches it in-network).
+
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	@authorized header Authorization "Bearer {$BRIDGE_TOKEN}"
+	handle @authorized {
+		reverse_proxy signal:8080
+	}
+	respond "Unauthorized" 401
+}
