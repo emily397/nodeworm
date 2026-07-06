@@ -1856,6 +1856,11 @@ function RecoveryCard({
   const needsConsent = Boolean(pa && pa.allowAutomation !== false && pa.risk !== "low");
   const [consented, setConsented] = useState(integration.portalConsent?.app === integration.appName);
   const consentSatisfied = !needsConsent || consented;
+  // By default a non-technical user is NOT dropped into a remote browser. The
+  // hands-on paths (AI agent / hosted browser / manual keys) live behind this
+  // toggle for whoever manages the workspace. NodeWorm auto-registers a client via
+  // DCR upstream when the provider supports it, so most apps never reach here.
+  const [advanced, setAdvanced] = useState(false);
 
   async function grantConsent(next: boolean) {
     setConsented(next);
@@ -2134,25 +2139,29 @@ function RecoveryCard({
       <div className="flex items-center gap-2 mb-2">
         <span className="dot" style={{ background: "var(--color-signal)" }} />
         <span className="font-mono text-[0.58rem] uppercase tracking-wider" style={{ color: "var(--color-signal)" }}>
-          register an OAuth app once
+          one-time setup for {integration.appName.toLowerCase()}
         </span>
-        {recipe.aiResearched && (
-          <span
-            className="font-mono text-[0.54rem] uppercase tracking-wider px-1.5 py-0.5 rounded inline-flex items-center gap-1"
-            style={{ background: "var(--color-paper-2)", border: "1px solid var(--color-line-2)", color: "var(--color-live)" }}
-          >
-            <span className="dot" style={{ background: "var(--color-live)", width: 5, height: 5 }} />
-            ai-researched
-          </span>
-        )}
       </div>
-      <p className="text-sm mb-3" style={{ color: "var(--color-ink-soft)" }}>
-        {integration.appName} needs a one-time app registration. NodeWorm does it for you in a secure browser it controls:
-        you just sign into {integration.appName} when it asks, and NodeWorm handles the rest and runs the consent. You never
-        leave NodeWorm and never copy-paste anything.
-      </p>
 
-      {agentAvailable && pa?.risk !== "blocked" && (
+      {/* Default for a non-technical user: a clean, honest state. No remote browser,
+          no copy-paste. NodeWorm auto-connects apps whose provider supports automatic
+          client registration; the rest need this quick one-time setup first. */}
+      <div className="rounded-lg p-3 mb-3" style={{ border: "1px solid var(--color-line-2)", background: "var(--color-paper-2)" }}>
+        <p className="text-sm" style={{ color: "var(--color-ink-soft)" }}>
+          NodeWorm connects most apps with a single click. {integration.appName} needs a quick one-time setup before it&apos;s
+          one-click for you. It&apos;s been flagged, so once it&apos;s set up you&apos;ll connect it instantly with the real
+          {" "}{integration.appName} sign-in, nothing to install or copy-paste.
+        </p>
+        <button
+          onClick={() => setAdvanced((v) => !v)}
+          className="mt-2 font-mono text-[0.6rem] uppercase tracking-wider underline"
+          style={{ color: "var(--color-muted)" }}
+        >
+          {advanced ? "Hide setup options" : "I manage this workspace → set it up now"}
+        </button>
+      </div>
+
+      {advanced && agentAvailable && pa?.risk !== "blocked" && (
         <div className="mb-3 rounded-lg p-3" style={{ border: "1px solid var(--color-teal)", background: "var(--color-paper-2)" }}>
           <div className="font-mono text-[0.56rem] uppercase tracking-wider mb-1.5 flex items-center gap-1.5" style={{ color: "var(--color-teal)" }}>
             <span className="dot" style={{ background: "var(--color-teal)" }} /> nodeworm does it for you
@@ -2225,7 +2234,7 @@ function RecoveryCard({
         </div>
       )}
 
-      {!agentAvailable && cbAvailable && pa?.risk !== "blocked" && (
+      {advanced && !agentAvailable && cbAvailable && pa?.risk !== "blocked" && (
         <div className="mb-3 rounded-lg p-3" style={{ border: "1px solid var(--color-teal)", background: "var(--color-paper-2)" }}>
           <div className="font-mono text-[0.56rem] uppercase tracking-wider mb-1.5 flex items-center gap-1.5" style={{ color: "var(--color-teal)" }}>
             <span className="dot" style={{ background: "var(--color-teal)" }} /> connect automatically
@@ -2303,16 +2312,10 @@ function RecoveryCard({
         </div>
       )}
 
-      {!agentAvailable && !cbAvailable && (
-        <p className="text-[0.72rem] mb-3" style={{ color: "var(--color-muted)" }}>
-          The hosted browser is not configured right now. The manual steps below are a temporary fallback; normally NodeWorm
-          does this for you.
-        </p>
-      )}
-
+      {advanced && (
       <details open={!agentAvailable && !cbAvailable && pa?.risk !== "blocked"}>
         <summary className="font-mono text-[0.58rem] uppercase tracking-wider cursor-pointer mb-3" style={{ color: "var(--color-muted)" }}>
-          do it manually instead
+          register the OAuth app manually
         </summary>
 
       {recipe.portalUrl && (
@@ -2411,6 +2414,7 @@ function RecoveryCard({
         )}
       </div>
       </details>
+      )}
     </div>
   );
 }
