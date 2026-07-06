@@ -6,7 +6,7 @@
 // integration's recoveryAttempts.
 
 import { envClientCreds, providerFor, type ClientCreds, type OAuthProvider } from "../oauth";
-import { getVaultClientCreds, storeClientCreds, vaultAvailable } from "../vault";
+import { getAppClient, getVaultClientCreds, storeClientCreds, vaultAvailable } from "../vault";
 import { assertPublicHttps, registerClient } from "./dcr";
 import { curatedRecipe, genericRecipe, llmRecipe } from "./recipes";
 import type { GuidedRecipe, Integration, RecoveryAttempt, RecoveryTier } from "../types";
@@ -43,6 +43,16 @@ export async function resolveClient(it: Integration, ctx: { origin: string; conn
   if (env) {
     record(it, "env", "used");
     return { kind: "ready", provider, creds: env, source: "env" };
+  }
+
+  // Tier 0.5: shared APP-LEVEL client. Registered once for this app (by an earlier
+  // user's automated setup, DCR, or a manual paste) and reused for EVERYONE, so no
+  // one re-registers: this user goes straight to the OAuth consent popup. This is
+  // what makes an app one-click for every user after the very first setup.
+  const shared = await getAppClient(it.appName);
+  if (shared) {
+    record(it, "vault", "used", "shared app client");
+    return { kind: "ready", provider, creds: shared, source: "vault" };
   }
 
   // Tier 1: per-connection encrypted vault (a client the user already pasted /

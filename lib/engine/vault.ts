@@ -28,6 +28,13 @@ function scopeKey(scope: CredScope): string {
   return scope.userId ? `u:${scope.userId}` : `c:${scope.connectionId}`;
 }
 
+// Shared, app-level scope. An OAuth client identifies "NodeWorm as an app" on a
+// provider (not a user), exactly like every SaaS integration: one registered app
+// that all users authorize. So a client captured once (by DCR, the agent, cobrowse,
+// or a manual paste) is cached here and reused for EVERY user, so no one ever
+// re-registers. This is what makes an app one-click for everyone after the first setup.
+const APP_SCOPE = "app";
+
 export function vaultAvailable(): boolean {
   return Boolean(sql && vaultKeyed());
 }
@@ -112,7 +119,41 @@ export async function storeClientCreds(appName: string, scope: CredScope, client
       client_secret_enc = EXCLUDED.client_secret_enc,
       source = EXCLUDED.source,
       updated_at = EXCLUDED.updated_at`;
+  // Also cache the client at the shared app level so the NEXT user of this app skips
+  // registration entirely and goes straight to the OAuth consent popup. Registering
+  // an app is a one-time-per-app event; authorizing it is per-user.
+  await storeAppClient(appName, clientId, clientSecret, source);
   return true;
+}
+
+// Persist (or refresh) the shared, app-level OAuth client. Idempotent per app.
+export async function storeAppClient(appName: string, clientId: string, clientSecret: string, source: string): Promise<boolean> {
+  if (!vaultAvailable()) return false;
+  await ensureSchema();
+  const s = slug(appName);
+  const now = Date.now();
+  const cidEnc = seal(clientId, aad(APP_SCOPE, s, "client_id"));
+  const secEnc = seal(clientSecret, aad(APP_SCOPE, s, "client_secret"));
+  await sql!`INSERT INTO oauth_creds (id, scope_key, app_slug, client_id_enc, client_secret_enc, source, created_at, updated_at)
+    VALUES (${rowId(APP_SCOPE, s)}, ${APP_SCOPE}, ${s}, ${cidEnc}, ${secEnc}, ${source}, ${now}, ${now})
+    ON CONFLICT (scope_key, app_slug) DO UPDATE SET
+      client_id_enc = EXCLUDED.client_id_enc,
+      client_secret_enc = EXCLUDED.client_secret_enc,
+      source = EXCLUDED.source,
+      updated_at = EXCLUDED.updated_at`;
+  return true;
+}
+
+// Read the shared app-level client (registered once, reused by every user).
+export async function getAppClient(appName: string): Promise<ClientCreds | undefined> {
+  if (!vaultAvailable()) return undefined;
+  const s = slug(appName);
+  const row = await loadRow(APP_SCOPE, s);
+  if (!row?.client_id_enc || !row.client_secret_enc) return undefined;
+  return {
+    clientId: open(row.client_id_enc, aad(APP_SCOPE, s, "client_id")),
+    clientSecret: open(row.client_secret_enc, aad(APP_SCOPE, s, "client_secret")),
+  };
 }
 
 export async function getVaultClientCreds(appName: string, scope: CredScope): Promise<ClientCreds | undefined> {
