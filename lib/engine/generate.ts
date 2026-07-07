@@ -361,10 +361,11 @@ function readme(d: Discovery, kind: "mcp" | "scraper", name: string, apiBase?: s
   ].join("\n");
 }
 
-export function generateBundle(d: Discovery, w: WireConfig, ops: OpenApiOp[] = [], gqlFields: GraphqlField[] = []): GeneratedBundle {
+export function generateBundle(d: Discovery, w: WireConfig, ops: OpenApiOp[] = [], gqlFields: GraphqlField[] = [], apiBaseOverride?: string): GeneratedBundle {
   const kind: "mcp" | "scraper" = d.hasPublicApi ? "mcp" : "scraper";
   const name = `${slugName(d.appName)}-${kind === "mcp" ? "mcp" : "scraper"}`;
-  const apiBase = kind === "mcp" ? discoveredApiBase(d) : undefined;
+  // A spec-declared server (e.g. from APIs.guru) is authoritative over a guess.
+  const apiBase = kind === "mcp" ? (apiBaseOverride || discoveredApiBase(d)) : undefined;
 
   const src =
     kind === "mcp"

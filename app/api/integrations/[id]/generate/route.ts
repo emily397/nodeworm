@@ -3,6 +3,7 @@ import { getOwnedIntegration, saveIntegration } from "@/lib/store";
 import { generateBundle, type GraphqlField } from "@/lib/engine/generate";
 import { recompute } from "@/lib/engine/orchestrate";
 import { packBundle, shouldPack, unpackBundle } from "@/lib/engine/bundle-store";
+import { apisGuruSpecUrl } from "@/lib/engine/intel/apisguru";
 import type { OpenApiOp } from "@/lib/engine/types";
 
 // Unwrap a GraphQL introspection type ref down to its named type + kind.
@@ -85,16 +86,26 @@ export const dynamic = "force-dynamic";
 // Lift REAL operations from the app's own OpenAPI spec (the URL the probe already
 // reached), so generated tools are genuine paths rather than conventions. Best
 // effort: a fetch/parse failure just yields zero ops and the generator says so.
-async function openApiOps(specUrl?: string): Promise<OpenApiOp[]> {
-  if (!specUrl) return [];
+async function parseOpenApi(specUrl?: string): Promise<{ ops: OpenApiOp[]; apiBase?: string }> {
+  if (!specUrl) return { ops: [] };
   try {
     const res = await fetch(specUrl, {
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(9000),
       headers: { accept: "application/json" },
       cache: "no-store",
     });
-    if (!res.ok) return [];
-    const spec = (await res.json()) as { paths?: Record<string, Record<string, { operationId?: string; summary?: string }>> };
+    if (!res.ok) return { ops: [] };
+    const spec = (await res.json()) as {
+      paths?: Record<string, Record<string, { operationId?: string; summary?: string }>>;
+      servers?: Array<{ url?: string }>;
+      host?: string;
+      basePath?: string;
+      schemes?: string[];
+    };
+    // Real base: OpenAPI 3 servers[], else Swagger 2 scheme+host+basePath.
+    let apiBase: string | undefined = spec.servers?.[0]?.url?.trim() || undefined;
+    if (!apiBase && spec.host) apiBase = `${spec.schemes?.[0] ?? "https"}://${spec.host}${spec.basePath ?? ""}`;
+    if (apiBase && !/^https?:\/\//.test(apiBase)) apiBase = undefined; // skip templated/relative bases
     const ops: OpenApiOp[] = [];
     for (const [path, methods] of Object.entries(spec.paths ?? {})) {
       for (const m of ["get", "post", "put", "patch", "delete"]) {
@@ -106,12 +117,12 @@ async function openApiOps(specUrl?: string): Promise<OpenApiOp[]> {
           name: op.operationId ?? `${m}_${path.replace(/[{}]/g, "").replace(/[^a-zA-Z0-9]+/g, "_")}`,
           summary: op.summary,
         });
-        if (ops.length >= 15) return ops;
+        if (ops.length >= 15) return { ops, apiBase };
       }
     }
-    return ops;
+    return { ops, apiBase };
   } catch {
-    return [];
+    return { ops: [] };
   }
 }
 
@@ -124,10 +135,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "Run the pipeline first: generation needs the discovered surface." }, { status: 400 });
   }
 
-  const ops = it.discovery.hasPublicApi ? await openApiOps(it.discovery.probe?.openApiUrl) : [];
+  // OpenAPI source: the app's own discovered spec first; else fall back to the real
+  // spec from the APIs.guru directory (thousands of apps that don't advertise one).
+  let specSource: "probe" | "apis.guru" | "none" = "none";
+  let specUrl = it.discovery.probe?.openApiUrl;
+  if (specUrl) specSource = "probe";
+  else if (it.discovery.hasPublicApi && it.discovery.apiType !== "graphql") {
+    const guru = await apisGuruSpecUrl(it.discovery.appUrl || it.appName);
+    if (guru) { specUrl = guru.specUrl; specSource = "apis.guru"; }
+  }
+  const { ops, apiBase } = it.discovery.hasPublicApi ? await parseOpenApi(specUrl) : { ops: [], apiBase: undefined };
   const gqlFields =
     it.discovery.apiType === "graphql" ? await graphqlQueryFields(it.discovery.probe?.graphqlUrl) : [];
-  const bundle = generateBundle(it.discovery, it.wire, ops, gqlFields);
+  const bundle = generateBundle(it.discovery, it.wire, ops, gqlFields, apiBase);
   const files = bundle.files;
   // Large bundles are stored packed (files emptied) so the Integration record stays
   // lean; readers hydrate. The response below still returns the full files.
@@ -141,6 +161,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     connectorName: bundle.connectorName,
     apiBase: bundle.apiBase,
     openApiOps: ops.length,
+    specSource,
     graphqlTools: gqlFields.length,
     packed: Boolean(it.generated.packed),
     files,
