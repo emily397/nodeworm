@@ -539,6 +539,28 @@ input:focus-visible {
   }
 }
 
+/* Run page: a signal flows down the phase rail as the swarm executes. Completed
+   rails run teal->lime; the active rail runs hot (signal->lime) toward the next stage. */
+.rail-live,
+.rail-live-hot {
+  background-size: 100% 220%;
+  animation: rail-flow 2s linear infinite;
+}
+.rail-live {
+  background-image: linear-gradient(180deg, var(--color-teal), var(--color-live), var(--color-teal));
+}
+.rail-live-hot {
+  background-image: linear-gradient(180deg, var(--color-signal), var(--color-live), var(--color-signal));
+}
+@keyframes rail-flow {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 0 -220%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .reveal {
     opacity: 1;
@@ -547,7 +569,9 @@ input:focus-visible {
   }
   .tree-row,
   .stage-dot,
-  .pipe-arrow {
+  .pipe-arrow,
+  .rail-live,
+  .rail-live-hot {
     animation: none;
   }
 }

@@ -184,9 +184,14 @@ function PhaseLane({
             <span className="font-mono text-xs font-semibold">{phase.agent[0]}</span>
           )}
         </div>
-        {!isLast && (
-          <div className="w-px flex-1 my-1" style={{ background: done ? "var(--color-teal)" : "var(--color-line)" }} />
-        )}
+        {!isLast &&
+          (done ? (
+            <div className="w-px flex-1 my-1 rail-live" />
+          ) : isActive ? (
+            <div className="w-px flex-1 my-1 rail-live-hot" />
+          ) : (
+            <div className="w-px flex-1 my-1" style={{ background: "var(--color-line)" }} />
+          ))}
       </div>
 
       {/* Body */}
