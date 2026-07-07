@@ -2,20 +2,37 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { NODES, WORMS, CATEGORY_COLOR, CATEGORY_LABEL, monogram, type Node, type Worm } from "@/lib/catalog";
+import Link from "next/link";
+import { NODES, WORMS, CATEGORY_COLOR, CATEGORY_LABEL, monogram, type Node, type NodeCategory, type Worm } from "@/lib/catalog";
 import { WormComposer } from "./WormComposer";
 
-export function Gallery() {
+export interface MyWorm {
+  id: string;
+  from: string;
+  to: string;
+  status: string;
+}
+
+// The categories present in the pond, in a stable display order.
+const CATS: NodeCategory[] = ["messaging", "productivity", "dev", "finance", "crm", "commerce", "scheduling", "storage", "marketing"];
+
+export function Gallery({ myWorms = [] }: { myWorms?: MyWorm[] }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const [cat, setCat] = useState<NodeCategory | "all">("all");
   const [castingWorm, setCastingWorm] = useState<string | null>(null);
   const [castingNode, setCastingNode] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const q = query.trim().toLowerCase();
   const filtered = useMemo(
-    () => (q ? NODES.filter((n) => n.name.toLowerCase().includes(q) || CATEGORY_LABEL[n.category].includes(q)) : NODES),
-    [q],
+    () =>
+      NODES.filter(
+        (n) =>
+          (cat === "all" || n.category === cat) &&
+          (!q || n.name.toLowerCase().includes(q) || CATEGORY_LABEL[n.category].includes(q)),
+      ),
+    [q, cat],
   );
   // Exact-ish match check drives whether "go fish" is offered for the typed name.
   const hasExact = q.length > 0 && NODES.some((n) => n.name.toLowerCase() === q);
@@ -89,6 +106,23 @@ export function Gallery() {
         </div>
       )}
 
+      {/* YOUR WORMS: bridges already cast */}
+      {myWorms.length > 0 && (
+        <section className="mb-14">
+          <div className="flex items-baseline justify-between mb-5">
+            <SectionLabel n="~">Worms on the line</SectionLabel>
+            <span className="font-mono text-[0.66rem]" style={{ color: "var(--color-muted)" }}>
+              {myWorms.length} cast
+            </span>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {myWorms.map((w, i) => (
+              <MyWormCard key={w.id} worm={w} delay={i * 40} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* BUILD-A-WORM composer */}
       <section className="mb-14">
         <div className="flex items-baseline justify-between mb-5">
@@ -122,6 +156,14 @@ export function Gallery() {
           <span className="font-mono text-[0.66rem]" style={{ color: "var(--color-muted)" }}>
             {NODES.length}+ nodes, and any app you can name
           </span>
+        </div>
+
+        {/* Category filters */}
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          <CatChip label="all" active={cat === "all"} onClick={() => setCat("all")} />
+          {CATS.map((c) => (
+            <CatChip key={c} label={CATEGORY_LABEL[c]} color={CATEGORY_COLOR[c]} active={cat === c} onClick={() => setCat(cat === c ? "all" : c)} />
+          ))}
         </div>
 
         <div className="relative mb-6 max-w-md">
@@ -161,6 +203,59 @@ export function Gallery() {
         )}
       </section>
     </div>
+  );
+}
+
+function CatChip({ label, color, active, onClick }: { label: string; color?: string; active: boolean; onClick: () => void }) {
+  const c = color ?? "var(--color-ink)";
+  return (
+    <button
+      onClick={onClick}
+      className="font-mono text-[0.62rem] uppercase tracking-wider px-2.5 py-1 rounded-full transition-colors"
+      style={{
+        color: active ? "var(--color-paper)" : c,
+        background: active ? c : "transparent",
+        border: `1px solid color-mix(in srgb, ${c} ${active ? "100" : "40"}%, transparent)`,
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function statusColor(s: string): string {
+  return s === "connected"
+    ? "var(--color-live)"
+    : s === "blocked"
+      ? "var(--color-blocked)"
+      : s === "running"
+        ? "var(--color-signal)"
+        : "var(--color-teal)";
+}
+
+function MyWormCard({ worm, delay }: { worm: MyWorm; delay: number }) {
+  const from = NODES.find((n) => n.name.toLowerCase() === worm.from.toLowerCase());
+  const to = NODES.find((n) => n.name.toLowerCase() === worm.to.toLowerCase());
+  return (
+    <Link href={`/bridge/${worm.id}`} className="worm-card group card p-4 rise transition-transform block" style={{ animationDelay: `${delay}ms` }}>
+      <div className="flex items-center gap-2">
+        {from ? <Chip name={from.name} category={from.category} /> : <Chip name={worm.from} category="productivity" />}
+        <span className="relative flex-1 h-[34px] grid place-items-center" aria-hidden>
+          <span className="block w-full h-px" style={{ background: "repeating-linear-gradient(90deg, var(--color-line-2) 0 5px, transparent 5px 9px)" }} />
+          <span className="worm-dot absolute left-1/2 -translate-x-1/2 rounded-full" style={{ width: 8, height: 8, background: statusColor(worm.status) }} />
+        </span>
+        {to ? <Chip name={to.name} category={to.category} /> : <Chip name={worm.to} category="productivity" />}
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <span className="text-sm font-semibold truncate">
+          {worm.from} → {worm.to}
+        </span>
+        <span className="chip shrink-0" style={{ borderColor: statusColor(worm.status) }}>
+          <span className="dot" style={{ background: statusColor(worm.status) }} />
+          {worm.status}
+        </span>
+      </div>
+    </Link>
   );
 }
 

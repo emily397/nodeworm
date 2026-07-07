@@ -5,6 +5,7 @@ import { KNOWLEDGE } from "@/lib/engine/knowledge";
 import { BridgeConsole } from "./components/BridgeConsole";
 import { StatusChip, SectionLabel } from "./components/ui";
 import { timeAgo } from "./components/status";
+import { WORMS, NODES, CATEGORY_COLOR, monogram } from "@/lib/catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +97,9 @@ export default async function Home() {
           <DecisionTree />
         </div>
       </section>
+
+      {/* Gallery teaser */}
+      <GalleryTeaser />
 
       {/* Pipeline */}
       <section className="py-14">
@@ -208,6 +212,63 @@ function Connector() {
     <svg width="20" height="16" viewBox="0 0 20 16" fill="none" aria-hidden>
       <path d="M1 8h15M12 4l5 4-5 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+// Landing teaser that hits with the breadth: nodes + worms + go-fish, one link away.
+function GalleryTeaser() {
+  const mono = (name: string) => {
+    const n = NODES.find((x) => x.name === name);
+    const c = n ? CATEGORY_COLOR[n.category] : "var(--color-signal)";
+    return (
+      <span
+        key={name}
+        className="grid place-items-center rounded-md font-display font-bold shrink-0"
+        style={{ width: 30, height: 30, fontSize: 12, color: c, background: `color-mix(in srgb, ${c} 15%, var(--color-paper))`, border: `1px solid color-mix(in srgb, ${c} 40%, transparent)` }}
+      >
+        {monogram(name)}
+      </span>
+    );
+  };
+  const picks = WORMS.slice(0, 4);
+  return (
+    <section className="py-14">
+      <div className="card overflow-hidden" style={{ background: "var(--color-paper-2)" }}>
+        <div className="p-6 sm:p-8 grid lg:grid-cols-[1fr_1.1fr] gap-8 items-center">
+          <div>
+            <div className="kicker mb-3">The tackle box</div>
+            <h2 className="font-display font-extrabold text-[clamp(1.7rem,3.6vw,2.5rem)] leading-tight">
+              Cast a worm.
+              <span style={{ color: "var(--color-signal)" }}> Catch any node.</span>
+            </h2>
+            <p className="mt-3 text-base max-w-md" style={{ color: "var(--color-ink-soft)" }}>
+              Every app is a node. Every automation is a worm that hooks two nodes together. Start from a ready-made
+              worm, build your own, or go fish for any app that isn&apos;t in the pond yet.
+            </p>
+            <Link href="/gallery" className="btn btn-signal text-sm mt-5 inline-flex">
+              Open the gallery ↗
+            </Link>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-2.5">
+            {picks.map((w) => (
+              <Link
+                key={w.prompt}
+                href="/gallery"
+                className="card p-3 flex items-center gap-2 transition-transform hover:-translate-y-0.5"
+                style={{ background: "var(--color-paper)" }}
+              >
+                {mono(w.from)}
+                <span className="font-mono text-[0.6rem]" style={{ color: "var(--color-signal)" }}>~</span>
+                {mono(w.to)}
+                <span className="text-[0.72rem] leading-tight ml-1" style={{ color: "var(--color-ink-soft)" }}>
+                  {w.from} → {w.to}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
