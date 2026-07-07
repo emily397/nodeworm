@@ -6,6 +6,7 @@ import { BridgeConsole } from "./components/BridgeConsole";
 import { StatusChip, SectionLabel } from "./components/ui";
 import { timeAgo } from "./components/status";
 import { WORMS, NODES, CATEGORY_COLOR, monogram } from "@/lib/catalog";
+import { Reveal } from "./components/Reveal";
 
 export const dynamic = "force-dynamic";
 
@@ -106,10 +107,12 @@ export default async function Home() {
       </section>
 
       {/* Gallery teaser */}
-      <GalleryTeaser />
+      <Reveal>
+        <GalleryTeaser />
+      </Reveal>
 
       {/* Pipeline */}
-      <section className="py-14">
+      <Reveal as="section" className="py-14">
         <SectionLabel n="//">The five-agent pipeline</SectionLabel>
         <div className="grid md:grid-cols-5 gap-3">
           {AGENTS.map((a, i) => (
@@ -143,11 +146,11 @@ export default async function Home() {
             </div>
           ))}
         </div>
-      </section>
+      </Reveal>
 
       {/* Recent bridges */}
       {bridges.length > 0 && (
-        <section className="py-10">
+        <Reveal as="section" className="py-10">
           <SectionLabel n="//">Recent bridges</SectionLabel>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {bridges.map((b) => (
@@ -171,11 +174,11 @@ export default async function Home() {
               </Link>
             ))}
           </div>
-        </section>
+        </Reveal>
       )}
 
       {/* Recent runs */}
-      <section className="py-10">
+      <Reveal as="section" className="py-10">
         <SectionLabel n="//">Recent endpoints</SectionLabel>
         {recent.length === 0 ? (
           <div className="card p-10 text-center wires" style={{ color: "var(--color-muted)" }}>
@@ -209,7 +212,7 @@ export default async function Home() {
             ))}
           </div>
         )}
-      </section>
+      </Reveal>
     </div>
   );
 }
@@ -306,19 +309,19 @@ function DecisionTree() {
       <div className="flex flex-col gap-2.5">
         {node("App name or URL", "scout maps the surface", "var(--color-ink)")}
         <span className="ml-4 h-3 w-px" style={{ background: "var(--color-line-2)" }} />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 tree-row p-0.5" style={{ animationDelay: "0s" }}>
           {branch("hosted MCP")}
           {node("Wire MCP + authorize", "fastest path", "var(--color-teal)")}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 tree-row p-0.5" style={{ animationDelay: "1.5s" }}>
           {branch("has API")}
           {node("Custom MCP + OAuth", "build + deploy", "var(--color-signal)")}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 tree-row p-0.5" style={{ animationDelay: "3s" }}>
           {branch("no API")}
           {node("Browser + OAuth/SSO", "headless fallback", "var(--color-ink)")}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 tree-row p-0.5" style={{ animationDelay: "4.5s" }}>
           {branch("dead end")}
           {node("No path found", "flagged honestly", "var(--color-blocked)")}
         </div>

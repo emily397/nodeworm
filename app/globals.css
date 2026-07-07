@@ -482,3 +482,40 @@ input:focus-visible {
     opacity: 0;
   }
 }
+
+/* Scroll reveal: fade + rise into view (toggled by the Reveal component). */
+.reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 0.7s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: opacity, transform;
+}
+.reveal.in {
+  opacity: 1;
+  transform: none;
+}
+
+/* A signal travels down the decision tree: each row glows in turn. */
+.tree-row {
+  border-radius: 12px;
+  animation: tree-glow 6s ease-in-out infinite;
+}
+@keyframes tree-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(255, 77, 20, 0.14), 0 10px 26px -14px rgba(255, 77, 20, 0.35);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .tree-row {
+    animation: none;
+  }
+}
