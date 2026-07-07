@@ -64,9 +64,16 @@ export default async function Home() {
           <h1 className="display-xl rise text-[clamp(2.7rem,6vw,4.6rem)]" style={{ animationDelay: "40ms" }}>
             Name two apps.
             <br />
-            The swarm
-            <span style={{ color: "var(--color-signal)" }}> bridges them.</span>
+            The swarm{" "}
+            <span className="marker" style={{ color: "var(--color-signal)" }}>bridges them.</span>
           </h1>
+
+          {/* Signature moment: a live wire, node to node, with a worm traveling it. */}
+          <div className="rise mt-6 max-w-xs" style={{ animationDelay: "70ms" }} aria-hidden>
+            <div className="livewire">
+              <span className="pulse" />
+            </div>
+          </div>
           <p
             className="rise mt-6 text-lg max-w-xl"
             style={{ animationDelay: "90ms", color: "var(--color-ink-soft)" }}
@@ -238,8 +245,8 @@ function GalleryTeaser() {
           <div>
             <div className="kicker mb-3">The tackle box</div>
             <h2 className="font-display font-extrabold text-[clamp(1.7rem,3.6vw,2.5rem)] leading-tight">
-              Cast a worm.
-              <span style={{ color: "var(--color-signal)" }}> Catch any node.</span>
+              Cast a worm.{" "}
+              <span className="marker" style={{ color: "var(--color-signal)" }}>Catch any node.</span>
             </h2>
             <p className="mt-3 text-base max-w-md" style={{ color: "var(--color-ink-soft)" }}>
               Every app is a node. Every automation is a worm that hooks two nodes together. Start from a ready-made

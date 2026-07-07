@@ -379,3 +379,106 @@ a {
     opacity: 1;
   }
 }
+
+/* ---- Vibrant elevation ---- */
+.btn-signal {
+  background: linear-gradient(135deg, #ff6a2b 0%, #ff4d14 45%, #d83a06 100%);
+}
+.marker {
+  position: relative;
+  white-space: nowrap;
+}
+.marker::after {
+  content: "";
+  position: absolute;
+  left: -0.06em;
+  right: -0.06em;
+  bottom: 0.06em;
+  height: 0.32em;
+  z-index: -1;
+  background: linear-gradient(90deg, rgba(255, 106, 43, 0.32), rgba(255, 77, 20, 0.42));
+  border-radius: 0.2em;
+  transform-origin: left;
+  animation: marker-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.35s both;
+}
+@keyframes marker-in {
+  from {
+    transform: skewX(-9deg) scaleX(0);
+  }
+  to {
+    transform: skewX(-9deg) scaleX(1);
+  }
+}
+
+a.card,
+button.card {
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.2s, border-color 0.2s;
+}
+a.card:hover,
+button.card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lift);
+  border-color: var(--color-line-2);
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--color-signal);
+  outline-offset: 2px;
+}
+
+.livewire {
+  position: relative;
+  height: 2px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(90deg, #d3c6ad 0 6px, transparent 6px 11px);
+}
+.livewire::before,
+.livewire::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-top: -6px;
+}
+.livewire::before {
+  left: -2px;
+  background: var(--color-teal);
+  box-shadow: 0 0 0 4px rgba(12, 92, 82, 0.22);
+}
+.livewire::after {
+  right: -2px;
+  background: var(--color-live);
+  box-shadow: 0 0 0 4px rgba(159, 216, 10, 0.22);
+}
+.livewire .pulse {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  margin-left: -5px;
+  border-radius: 50%;
+  background: var(--color-signal);
+  box-shadow: 0 0 14px 2px rgba(255, 77, 20, 0.6);
+  animation: wire-travel 2.6s cubic-bezier(0.55, 0, 0.45, 1) infinite;
+}
+@keyframes wire-travel {
+  0% {
+    left: 2%;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    left: 98%;
+    opacity: 0;
+  }
+}
