@@ -274,6 +274,39 @@ a {
   opacity: 0;
   animation: rise 0.62s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
+
+/* Gallery: nodes + worms. Tiles lift on hover; the worm slides along its line. */
+.node-tile:hover,
+.worm-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lift);
+}
+.node-tile:active,
+.worm-card:active {
+  transform: translateY(-1px);
+}
+.worm-card .worm-dot {
+  transition: left 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.worm-card:hover .worm-dot {
+  animation: worm-swim 1.1s ease-in-out infinite;
+}
+@keyframes worm-swim {
+  0% {
+    left: 8%;
+  }
+  50% {
+    left: 92%;
+  }
+  100% {
+    left: 8%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .worm-card:hover .worm-dot {
+    animation: none;
+  }
+}
 .fade {
   opacity: 0;
   animation: fade 0.5s ease forwards;

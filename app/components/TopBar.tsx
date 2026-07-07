@@ -19,6 +19,7 @@ export function TopBar() {
 
   const nav = [
     { href: "/", label: "Launch" },
+    { href: "/gallery", label: "Gallery" },
     { href: "/integrations", label: "Integrations" },
   ];
 
