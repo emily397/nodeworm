@@ -302,8 +302,24 @@ a {
     left: 8%;
   }
 }
+/* The composer's worm bobs gently along its line while you build. */
+.worm-bob {
+  animation: worm-bob 2.4s ease-in-out infinite;
+}
+@keyframes worm-bob {
+  0% {
+    left: 6%;
+  }
+  50% {
+    left: 94%;
+  }
+  100% {
+    left: 6%;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .worm-card:hover .worm-dot {
+  .worm-card:hover .worm-dot,
+  .worm-bob {
     animation: none;
   }
 }

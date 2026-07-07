@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { NODES, WORMS, CATEGORY_COLOR, CATEGORY_LABEL, monogram, type Node, type Worm } from "@/lib/catalog";
+import { WormComposer } from "./WormComposer";
 
 export function Gallery() {
   const router = useRouter();
@@ -88,10 +89,21 @@ export function Gallery() {
         </div>
       )}
 
+      {/* BUILD-A-WORM composer */}
+      <section className="mb-14">
+        <div className="flex items-baseline justify-between mb-5">
+          <SectionLabel n="~">Build a worm</SectionLabel>
+          <span className="font-mono text-[0.66rem]" style={{ color: "var(--color-muted)" }}>
+            any node → any node, in your words
+          </span>
+        </div>
+        <WormComposer />
+      </section>
+
       {/* WORMS */}
       <section className="mb-16">
         <div className="flex items-baseline justify-between mb-5">
-          <SectionLabel n="~">Ready-made worms</SectionLabel>
+          <SectionLabel n="~">Or start from a ready-made worm</SectionLabel>
           <span className="font-mono text-[0.66rem]" style={{ color: "var(--color-muted)" }}>
             one click stands up a real bridge
           </span>
