@@ -144,7 +144,7 @@ export function Gallery({ myWorms = [] }: { myWorms?: MyWorm[] }) {
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {WORMS.map((w, i) => (
-            <WormCard key={w.prompt} worm={w} delay={i * 45} busy={castingWorm === w.prompt} onCast={() => castWorm(w)} />
+            <WormCard key={w.prompt} worm={w} delay={i * 45} busy={castingWorm === w.prompt} onCast={() => castWorm(w)} wide={i % 5 === 0} />
           ))}
         </div>
       </section>
@@ -290,14 +290,14 @@ function Chip({ name, category, size = 34 }: { name: string; category: Node["cat
   );
 }
 
-function WormCard({ worm, delay, busy, onCast }: { worm: Worm; delay: number; busy: boolean; onCast: () => void }) {
+function WormCard({ worm, delay, busy, onCast, wide }: { worm: Worm; delay: number; busy: boolean; onCast: () => void; wide?: boolean }) {
   const from = NODES.find((n) => n.name === worm.from);
   const to = NODES.find((n) => n.name === worm.to);
   return (
     <button
       onClick={onCast}
       disabled={busy}
-      className="worm-card group text-left card p-4 rise transition-transform"
+      className={`worm-card group text-left card p-4 rise transition-transform${wide ? " sm:col-span-2 lg:col-span-2" : ""}`}
       style={{ animationDelay: `${delay}ms` }}
     >
       <div className="flex items-center gap-2">

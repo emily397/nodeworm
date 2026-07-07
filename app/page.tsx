@@ -119,8 +119,8 @@ export default async function Home() {
             <div key={a.agent} className="relative">
               {i < AGENTS.length - 1 && (
                 <span
-                  className="hidden md:block absolute top-7 -right-2 z-10"
-                  style={{ color: "var(--color-line-2)" }}
+                  className="pipe-arrow hidden md:block absolute top-7 -right-2 z-10"
+                  style={{ color: "var(--color-line-2)", animationDelay: `${i}s` }}
                 >
                   <Connector />
                 </span>
@@ -130,7 +130,7 @@ export default async function Home() {
                   <span className="font-mono text-xs" style={{ color: "var(--color-muted)" }}>
                     {a.n}
                   </span>
-                  <span className="dot" style={{ background: a.color, width: 9, height: 9 }} />
+                  <span className="dot stage-dot" style={{ background: a.color, color: a.color, width: 9, height: 9, animationDelay: `${i}s` }} />
                 </div>
                 <div className="font-display font-bold text-lg leading-none">{a.agent}</div>
                 <div

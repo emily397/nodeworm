@@ -509,13 +509,45 @@ input:focus-visible {
   }
 }
 
+/* Pipeline flow: a signal passes through the five agents, left to right. Each
+   stage dot pulses and each connector lights orange in sequence (staggered delays). */
+.stage-dot {
+  color: inherit;
+  animation: stage-pulse 5s ease-in-out infinite;
+}
+@keyframes stage-pulse {
+  0%, 26%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+  }
+  9% {
+    transform: scale(1.65);
+    box-shadow: 0 0 12px 3px currentColor;
+  }
+}
+.pipe-arrow {
+  animation: arrow-flow 5s ease-in-out infinite;
+}
+@keyframes arrow-flow {
+  0%, 32%, 100% {
+    color: var(--color-line-2);
+    transform: translateX(0);
+  }
+  11% {
+    color: var(--color-signal);
+    transform: translateX(3px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .reveal {
     opacity: 1;
     transform: none;
     transition: none;
   }
-  .tree-row {
+  .tree-row,
+  .stage-dot,
+  .pipe-arrow {
     animation: none;
   }
 }
