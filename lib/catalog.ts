@@ -23,16 +23,18 @@ export type NodeCategory =
 
 // Category -> accent, drawn from the NodeWorm palette (warm earth + teal/green,
 // never purple or generic SaaS blue). Used for the node tile + its glow.
+// Vivid, distinct categorical palette (saturated so the gallery pops). Each hue is
+// pulled far enough apart to read at monogram size, warm-forward to match the brand.
 export const CATEGORY_COLOR: Record<NodeCategory, string> = {
-  messaging: "#e0642f", // signal orange
-  productivity: "#2f9c8f", // teal
-  dev: "#3d7a74", // deep teal (kept distinct from productivity)
-  finance: "#3f9e4d", // live green
-  crm: "#c9902b", // amber
-  commerce: "#c2603f", // clay
-  scheduling: "#4a9d94", // aqua
-  storage: "#8a8f5a", // olive
-  marketing: "#d1743e", // ember
+  messaging: "#ff5a1f", // bright signal orange
+  productivity: "#10b6a0", // aqua
+  dev: "#06b6d4", // cyan
+  finance: "#16c65a", // vivid green
+  crm: "#ffb020", // amber
+  commerce: "#ff2d78", // berry
+  scheduling: "#2fd0c0", // bright teal-aqua
+  storage: "#a3d92a", // lime
+  marketing: "#ff8c42", // ember
 };
 
 export const CATEGORY_LABEL: Record<NodeCategory, string> = {

@@ -69,7 +69,7 @@ export function SwarmConsole({ initial }: { initial: Integration }) {
           >
             <span>&larr;</span> all integrations
           </Link>
-          <h1 className="display-xl text-[clamp(2.1rem,5vw,3.4rem)]">
+          <h1 className="display-xl gradient-text text-[clamp(2.1rem,5vw,3.4rem)]">
             {it.appName}
           </h1>
           <div className="flex items-center gap-3 mt-2">
@@ -124,7 +124,7 @@ function ProgressMeter({ online, total }: { online: number; total: number }) {
   return (
     <div className="text-right">
       <div className="font-display font-extrabold text-3xl leading-none">
-        {online}
+        <span className="gradient-text">{online}</span>
         <span style={{ color: "var(--color-muted)" }}>/{total}</span>
       </div>
       <div className="font-mono text-[0.66rem] uppercase tracking-wider mt-1" style={{ color: "var(--color-muted)" }}>
@@ -591,7 +591,7 @@ function ReportPanel({ integration }: { integration: Integration }) {
       <div className="card overflow-hidden" style={{ boxShadow: "var(--shadow-lift)" }}>
         <div className="p-6 sm:p-8 wires" style={{ background: "var(--color-paper-2)" }}>
           <div className="kicker mb-3">integration report</div>
-          <h2 className="font-display font-extrabold text-[clamp(1.6rem,3.5vw,2.4rem)] leading-tight max-w-2xl">
+          <h2 className="font-display font-extrabold text-[clamp(1.6rem,3.5vw,2.4rem)] leading-tight max-w-2xl gradient-text">
             {r.headline}
           </h2>
           <p className="mt-3 text-base max-w-2xl" style={{ color: "var(--color-ink-soft)" }}>

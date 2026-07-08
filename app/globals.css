@@ -77,6 +77,8 @@ body::before {
   background-repeat: no-repeat;
   filter: saturate(1.15);
   animation: aurora 26s ease-in-out infinite alternate;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 @keyframes aurora {
   0% {

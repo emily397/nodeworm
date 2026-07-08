@@ -91,7 +91,7 @@ export function Gallery({ myWorms = [] }: { myWorms?: MyWorm[] }) {
         <div className="kicker rise mb-4">The tackle box</div>
         <h1 className="display-xl rise text-[clamp(2.4rem,5.5vw,4rem)] max-w-3xl" style={{ animationDelay: "40ms" }}>
           Cast a worm.{" "}
-          <span className="marker" style={{ color: "var(--color-signal)" }}>Catch any node.</span>
+          <span className="gradient-text">Catch any node.</span>
         </h1>
         <p className="rise mt-5 text-lg max-w-2xl" style={{ animationDelay: "90ms", color: "var(--color-ink-soft)" }}>
           Every app is a <b style={{ color: "var(--color-ink)" }}>node</b>. Every automation is a{" "}
