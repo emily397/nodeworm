@@ -20,6 +20,18 @@
   --color-live: #9fd80a;
   --color-blocked: #c0392b;
 
+  /* Vibrant warm-spectrum accents: the palette that makes it feel alive, not a
+     two-tone terminal. Amber -> tangerine -> berry warm arc, aqua + lime cool pops. */
+  --color-amber: #ffb020;
+  --color-berry: #ff2d78;
+  --color-aqua: #10b6a0;
+  --color-grape: #7b3ff2;
+
+  /* Signature gradients (used for hero text, primary CTAs, glows, aurora). */
+  --grad-warm: linear-gradient(105deg, var(--color-amber) 0%, var(--color-signal) 42%, var(--color-berry) 100%);
+  --grad-cool: linear-gradient(120deg, var(--color-aqua) 0%, var(--color-live) 100%);
+  --grad-cta: linear-gradient(120deg, var(--color-signal) 0%, var(--color-berry) 100%);
+
   --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
   --font-body: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", monospace;
@@ -49,16 +61,33 @@ body {
   overflow-x: hidden;
 }
 
-/* Atmospheric base: grain + warm light pools. */
+/* Atmospheric base: a living aurora of saturated color blobs drifting over warm
+   paper. This is what turns the flat cream into something alive and branded. */
 body::before {
   content: "";
   position: fixed;
-  inset: 0;
+  inset: -20%;
   z-index: -2;
   background:
-    radial-gradient(1100px 700px at 12% -8%, rgba(255, 77, 20, 0.08), transparent 60%),
-    radial-gradient(900px 600px at 100% 0%, rgba(12, 92, 82, 0.07), transparent 55%),
+    radial-gradient(46% 42% at 14% 8%, color-mix(in srgb, var(--color-amber) 42%, transparent), transparent 70%),
+    radial-gradient(44% 40% at 88% 4%, color-mix(in srgb, var(--color-berry) 34%, transparent), transparent 70%),
+    radial-gradient(50% 46% at 78% 70%, color-mix(in srgb, var(--color-aqua) 30%, transparent), transparent 72%),
+    radial-gradient(40% 40% at 22% 88%, color-mix(in srgb, var(--color-signal) 30%, transparent), transparent 72%),
     linear-gradient(180deg, var(--color-paper) 0%, #f0e8d6 100%);
+  background-repeat: no-repeat;
+  filter: saturate(1.15);
+  animation: aurora 26s ease-in-out infinite alternate;
+}
+@keyframes aurora {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(2.5%, -2%, 0) scale(1.08);
+  }
+  100% {
+    transform: translate3d(-2%, 2.5%, 0) scale(1.04);
+  }
 }
 
 body::after {
@@ -164,6 +193,71 @@ a {
 .btn-ink:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-soft);
+}
+
+/* Primary CTA: a warm gradient with a colored glow. Also upgrades every existing
+   .btn-signal app-wide so all primary actions gain the vibrant treatment. */
+.btn-signal,
+.btn-gradient {
+  background: var(--grad-cta);
+  background-size: 140% 140%;
+  color: #fff;
+  border: none;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset, 0 12px 26px -10px rgba(255, 45, 120, 0.6);
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.22s, background-position 0.5s;
+}
+.btn-signal:hover,
+.btn-gradient:hover {
+  transform: translateY(-2px);
+  background-position: 100% 50%;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.4) inset, 0 20px 40px -12px rgba(255, 45, 120, 0.75);
+}
+
+/* Gradient headline text. */
+.gradient-text {
+  background: var(--grad-warm);
+  background-size: 180% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: grad-pan 8s ease-in-out infinite alternate;
+}
+@keyframes grad-pan {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 100% 50%;
+  }
+}
+
+/* Cards lift and gain a warm colored glow on hover; .card-pop adds a gradient top
+   edge so key cards read as vivid, not cream-on-cream. */
+.card {
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.24s, border-color 0.24s;
+}
+.card:hover {
+  box-shadow: var(--shadow-soft), 0 22px 48px -26px color-mix(in srgb, var(--color-signal) 55%, transparent);
+}
+.card-pop {
+  position: relative;
+  overflow: hidden;
+}
+.card-pop::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: var(--grad-warm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    animation: none;
+  }
+  .gradient-text {
+    animation: none;
+  }
 }
 
 /* ---- Telemetry / terminal ---- */

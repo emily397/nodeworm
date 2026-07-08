@@ -16,7 +16,7 @@ const AGENTS = [
     agent: "Scout",
     label: "Discovery",
     desc: "Searches API docs, MCP registries and developer portals to map the integration surface.",
-    color: "var(--color-teal)",
+    color: "var(--color-aqua)",
   },
   {
     n: "02",
@@ -30,21 +30,21 @@ const AGENTS = [
     agent: "Wire",
     label: "Sync",
     desc: "Designs bidirectional sync: outbound tools plus webhooks, polling or entity mirroring.",
-    color: "var(--color-ink)",
+    color: "var(--color-berry)",
   },
   {
     n: "04",
     agent: "Auditor",
     label: "Verify",
     desc: "Tests connectivity, auth persistence, write round-trips and inbound delivery.",
-    color: "var(--color-teal)",
+    color: "var(--color-amber)",
   },
   {
     n: "05",
     agent: "Relay",
     label: "Handoff",
     desc: "Reports what works and surfaces the one action you still need to take.",
-    color: "var(--color-signal)",
+    color: "var(--color-teal)",
   },
 ];
 
@@ -62,11 +62,11 @@ export default async function Home() {
           <div className="kicker rise mb-5" style={{ animationDelay: "0ms" }}>
             Autonomous bidirectional integration engine
           </div>
-          <h1 className="display-xl rise text-[clamp(2.7rem,6vw,4.6rem)]" style={{ animationDelay: "40ms" }}>
+          <h1 className="display-xl rise text-[clamp(2.9rem,6.4vw,5rem)]" style={{ animationDelay: "40ms" }}>
             Name two apps.
             <br />
             The swarm{" "}
-            <span className="marker" style={{ color: "var(--color-signal)" }}>bridges them.</span>
+            <span className="gradient-text">bridges them.</span>
           </h1>
 
           {/* Signature moment: a live wire, node to node, with a worm traveling it. */}
@@ -125,9 +125,18 @@ export default async function Home() {
                   <Connector />
                 </span>
               )}
-              <div className="card h-full p-5 rise" style={{ animationDelay: `${i * 70}ms` }}>
+              <div
+                className="card card-pop h-full p-5 rise"
+                style={{
+                  animationDelay: `${i * 70}ms`,
+                  background: `linear-gradient(180deg, color-mix(in srgb, ${a.color} 9%, var(--color-card)), var(--color-card))`,
+                }}
+              >
                 <div className="flex items-center justify-between mb-3">
-                  <span className="font-mono text-xs" style={{ color: "var(--color-muted)" }}>
+                  <span
+                    className="font-display font-extrabold text-xl leading-none"
+                    style={{ color: a.color }}
+                  >
                     {a.n}
                   </span>
                   <span className="dot stage-dot" style={{ background: a.color, color: a.color, width: 9, height: 9, animationDelay: `${i}s` }} />
