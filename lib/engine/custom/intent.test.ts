@@ -32,12 +32,14 @@ describe("heuristicWorkflow", () => {
     expect(w.apps.length).toBe(0);
   });
 
-  // Characterizes CURRENT behavior: the fallback classifier is permissive and treats
-  // a leftover non-trigger phrase as a single-app connect (appLooksNamed passes any
-  // non-stopword text). Documented, not asserted-as-ideal; the LLM parse is the
-  // primary path and only this heuristic fallback is this loose.
-  it("currently classifies a bare vague phrase as single-app (known over-eager quirk)", () => {
-    expect(heuristicWorkflow("do something useful for me").kind).toBe("single-app");
+  it("clarifies (not single-app) for a vague multi-word phrase with no real app name", () => {
+    expect(heuristicWorkflow("do something useful for me").kind).toBe("clarify");
+    expect(heuristicWorkflow("just help me out here please").kind).toBe("clarify");
+  });
+
+  it("still treats a bare lowercase app name as single-app (no regression)", () => {
+    expect(heuristicWorkflow("connect stripe").kind).toBe("single-app");
+    expect(heuristicWorkflow("set up notion").kind).toBe("single-app");
   });
 
   it("preserves the raw request on every plan", () => {

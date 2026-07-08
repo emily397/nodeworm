@@ -357,8 +357,24 @@ function appInClause(clause: string): string | undefined {
 
 const STOPWORDS = new Set(["i", "a", "an", "the", "when", "whenever", "if", "then", "my", "me", "new", "create", "add", "send", "update"]);
 
+// Freeform english fillers that mark a phrase as NOT an app name, so a vague
+// request ("do something useful for me") clarifies instead of being treated as a
+// connect to an app literally named after the leftover words.
+const NON_APP_WORDS = new Set([
+  "something", "anything", "everything", "someone", "stuff", "things", "thing",
+  "help", "for", "me", "us", "you", "please", "some", "useful", "out", "here",
+  "just", "really", "actually", "somehow", "whatever", "it", "them", "this", "that",
+]);
+
+// An app name is a short proper noun: 1-2 tokens, letters present, no english
+// filler word. Deliberately loose enough to accept bare lowercase names ("stripe",
+// "google calendar") but strict enough to reject freeform phrases.
 function appLooksNamed(s: string): boolean {
-  return /[A-Za-z]/.test(s) && !STOPWORDS.has(s.trim().toLowerCase());
+  const t = s.trim();
+  if (!/[A-Za-z]/.test(t) || STOPWORDS.has(t.toLowerCase())) return false;
+  const words = t.split(/\s+/);
+  if (words.length > 2) return false;
+  return !words.some((w) => NON_APP_WORDS.has(w.toLowerCase()));
 }
 
 function stripApp(clause: string, app: string): string {
