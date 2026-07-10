@@ -4,7 +4,7 @@ import { generateBundle, type GraphqlField } from "@/lib/engine/generate";
 import { recompute } from "@/lib/engine/orchestrate";
 import { packBundle, shouldPack, unpackBundle } from "@/lib/engine/bundle-store";
 import { apisGuruSpecUrl } from "@/lib/engine/intel/apisguru";
-import { parseHar } from "@/lib/engine/har";
+import { normalizeCapture } from "@/lib/engine/capture";
 import type { OpenApiOp } from "@/lib/engine/types";
 
 // Unwrap a GraphQL introspection type ref down to its named type + kind.
@@ -148,8 +148,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // Captured-traffic source (highest signal): a HAR from the managed session /
   // Helper / devtools export reveals the app's REAL private API. It unlocks
   // generation even when the app advertises no public spec at all.
-  const body = (await req.json().catch(() => ({}))) as { har?: string };
-  const harResult = typeof body.har === "string" && body.har.length > 0 ? parseHar(body.har) : { ops: [], apiBase: undefined };
+  // Captured traffic can arrive as a raw HAR string, or as the flat request array a
+  // CDP session / Helper extension emits; both normalize through the same contract.
+  // it.capturedRequests is set by the auto-capture session route (zero user action).
+  const body = (await req.json().catch(() => ({}))) as { har?: string; capturedRequests?: unknown };
+  const captureInput = body.har ?? body.capturedRequests ?? it.capturedRequests;
+  const harResult = captureInput ? normalizeCapture(captureInput) : { ops: [], apiBase: undefined };
 
   const specResult = it.discovery.hasPublicApi ? await parseOpenApi(specUrl) : { ops: [], apiBase: undefined };
   // HAR ops win on conflicts (they are ground truth), then spec ops fill gaps.

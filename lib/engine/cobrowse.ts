@@ -159,6 +159,63 @@ export async function captureCreds(connectUrl: string, redirectUri: string): Pro
   }
 }
 
+// Auto-capture the app's real network traffic during the live managed session, with
+// zero user action beyond browsing. Attaches to the running CDP browser, records
+// JSON API responses (method/url/status/mime + request body) for a short window, and
+// returns them as capture entries the generator turns into a typed connector. This
+// is the reverse-engineering loop closed end to end: the user just logs in and clicks
+// around; NodeWorm watches the calls the app makes and rebuilds a client from them.
+export interface CapturedRequest {
+  method: string;
+  url: string;
+  status: number;
+  mimeType: string;
+  requestBody?: string;
+}
+
+export async function captureTraffic(
+  connectUrl: string,
+  opts?: { windowMs?: number; max?: number },
+): Promise<CapturedRequest[]> {
+  const windowMs = opts?.windowMs ?? 20000;
+  const max = opts?.max ?? 300;
+  const out: CapturedRequest[] = [];
+  try {
+    const { chromium } = await import("playwright-core");
+    const browser = await chromium.connectOverCDP(connectUrl);
+    const ctx = browser.contexts()[0];
+    if (!ctx) {
+      await browser.close();
+      return out;
+    }
+    ctx.on("response", (res) => {
+      if (out.length >= max) return;
+      try {
+        const req = res.request();
+        const type = req.resourceType();
+        // Only real API calls: XHR/fetch, never documents/assets.
+        if (type !== "xhr" && type !== "fetch") return;
+        const mime = res.headers()["content-type"] ?? "";
+        if (!mime.includes("json")) return;
+        out.push({
+          method: req.method(),
+          url: req.url(),
+          status: res.status(),
+          mimeType: mime,
+          requestBody: req.postData() ?? undefined,
+        });
+      } catch {
+        /* a single response we can't read is not fatal to the capture */
+      }
+    });
+    await new Promise((r) => setTimeout(r, windowMs));
+    await browser.close();
+  } catch {
+    /* capture is best-effort; an unreachable session just yields nothing */
+  }
+  return out;
+}
+
 // ---- Managed session (R6 floor): connect the APP ITSELF, not a dev portal -----
 // The user logs into the app's own UI in a hosted browser; its auth persists in a
 // Browserbase Context (the durable, encrypted pointer NodeWorm holds), so the

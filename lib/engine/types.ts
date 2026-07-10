@@ -448,6 +448,9 @@ export interface Integration {
   // A generated connector bundle (generated-mcp / generated-scraper): real typed
   // code built from the discovered surface, held here until the user deploys it.
   generated?: GeneratedBundle;
+  // Network traffic auto-captured from the managed session (CDP) or the Helper
+  // extension, fed to the generator to rebuild a typed connector from real calls.
+  capturedRequests?: unknown;
 }
 
 // ---- Generated connector (generated-mcp / generated-scraper) ---------------
