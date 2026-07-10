@@ -8,6 +8,7 @@ import { neon } from "@neondatabase/serverless";
 import { freshPhases, type Bridge, type Integration } from "./engine/types";
 import { authAvailable, currentUserId } from "./engine/auth";
 import { unpackBundle } from "./engine/bundle-store";
+import type { CacheBackend } from "./engine/cache";
 
 // Inflate a packed generated bundle back to its files for any client-facing read.
 // The packed blob (and empty files array) only ever lives on the stored record.
@@ -39,6 +40,11 @@ async function ensureSchema(): Promise<void> {
       source_id text NOT NULL,
       target_id text NOT NULL,
       status text NOT NULL,
+      data jsonb NOT NULL
+    )`;
+    await sql`CREATE TABLE IF NOT EXISTS engine_cache (
+      key text PRIMARY KEY,
+      expires bigint NOT NULL,
       data jsonb NOT NULL
     )`;
   })();
@@ -277,6 +283,49 @@ export async function removeBridge(id: string): Promise<boolean> {
   bridgePersistFile(all);
   return true;
 }
+
+// ---- Persistent cache tier (discovery memoization across cold starts) -----
+
+const CACHE_FILE = path.join(DATA_DIR, "cache.json");
+
+function cacheFileLoad(): Record<string, { value: unknown; expires: number }> {
+  try {
+    return JSON.parse(fs.readFileSync(CACHE_FILE, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+export const persistentCache: CacheBackend<unknown> = {
+  async get(key) {
+    if (sql) {
+      await ensureSchema();
+      const rows = (await sql`SELECT expires, data FROM engine_cache WHERE key = ${key} LIMIT 1`) as Array<{ expires: string | number; data: unknown }>;
+      const r = rows[0];
+      return r ? { value: r.data, expires: Number(r.expires) } : undefined;
+    }
+    return cacheFileLoad()[key];
+  },
+  async set(key, value, expires) {
+    if (sql) {
+      await ensureSchema();
+      await sql`DELETE FROM engine_cache WHERE expires < ${Date.now()}`;
+      await sql`INSERT INTO engine_cache (key, expires, data)
+        VALUES (${key}, ${expires}, ${JSON.stringify(value)}::jsonb)
+        ON CONFLICT (key) DO UPDATE SET expires = EXCLUDED.expires, data = EXCLUDED.data`;
+      return;
+    }
+    const all = cacheFileLoad();
+    for (const k of Object.keys(all)) if (all[k].expires < Date.now()) delete all[k];
+    all[key] = { value, expires };
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.writeFileSync(CACHE_FILE, JSON.stringify(all));
+    } catch {
+      // Read-only FS: memory tier only.
+    }
+  },
+};
 
 function shortId(): string {
   return globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 10);

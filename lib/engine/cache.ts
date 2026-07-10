@@ -42,3 +42,42 @@ export class TtlCache<T> {
 function clone<T>(v: T): T {
   return v == null || typeof v !== "object" ? v : (structuredClone(v) as T);
 }
+
+// Persistent second tier for a TieredCache. Backed by Neon (or the file store)
+// so cache warmth survives serverless cold starts. Absolute expiry travels with
+// the row; the backend never applies its own TTL policy.
+export interface CacheBackend<T> {
+  get(key: string): Promise<{ value: T; expires: number } | undefined>;
+  set(key: string, value: T, expires: number): Promise<void>;
+}
+
+// Memory-first cache with a persistent read-through/write-through second tier.
+// The backend is best-effort: a down DB degrades to plain in-memory caching,
+// it can never break the caller.
+export class TieredCache<T> {
+  private readonly memory: TtlCache<T>;
+  private readonly ttlMs: number;
+  private readonly backend: CacheBackend<T>;
+
+  constructor(opts: { ttlMs: number; max: number }, backend: CacheBackend<T>) {
+    this.memory = new TtlCache<T>(opts);
+    this.ttlMs = opts.ttlMs;
+    this.backend = backend;
+  }
+
+  async get(key: string, nowMs: number = Date.now()): Promise<T | undefined> {
+    const hot = this.memory.get(key, nowMs);
+    if (hot !== undefined) return hot;
+    const row = await this.backend.get(key).catch(() => undefined);
+    if (!row || nowMs >= row.expires) return undefined;
+    // Seed memory preserving the row's absolute expiry: TtlCache computes
+    // expires = nowMs + ttlMs, so shift nowMs back to land exactly on it.
+    this.memory.set(key, row.value, row.expires - this.ttlMs);
+    return row.value;
+  }
+
+  async set(key: string, value: T, nowMs: number = Date.now()): Promise<void> {
+    this.memory.set(key, value, nowMs);
+    await this.backend.set(key, value, nowMs + this.ttlMs).catch(() => {});
+  }
+}
