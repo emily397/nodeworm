@@ -10,6 +10,7 @@ import { hostedConnectorAvailableFor } from "./hosted-connectors";
 import { nangoLookup } from "./intel/nango";
 import { hostedMcpForApp } from "./intel/mcp-registry";
 import { scout, architect, wire, auditor, report } from "./phases";
+import { TtlCache } from "./cache";
 import type { Discovery, Integration } from "./types";
 
 // True exactly when the deterministic architect ladder would fall to the managed-
@@ -34,7 +35,22 @@ async function baseDiscovery(name: string, url?: string): Promise<Discovery> {
   return heuristicDiscovery(url ?? name);
 }
 
+// Memoize resolved discovery per app for 15 min: probe + LLM research + registry
+// lookups are the slow, costly part, and the same app is requested repeatedly
+// (gallery worms, retries, both sides of a bridge).
+const discoveryCache = new TtlCache<Discovery>({ ttlMs: 15 * 60 * 1000, max: 200 });
+const discoveryKey = (name: string, url?: string) => `${name.trim().toLowerCase()}|${(url ?? "").trim().toLowerCase()}`;
+
 async function discover(name: string, url?: string): Promise<Discovery> {
+  const key = discoveryKey(name, url);
+  const cached = discoveryCache.get(key);
+  if (cached) return cached;
+  const fresh = await discoverUncached(name, url);
+  discoveryCache.set(key, fresh);
+  return fresh;
+}
+
+async function discoverUncached(name: string, url?: string): Promise<Discovery> {
   const base = await baseDiscovery(name, url);
   if (url && !base.appUrl) base.appUrl = url;
   // Reverse-engineer the live target and layer real endpoints onto the base.
