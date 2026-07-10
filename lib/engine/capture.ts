@@ -20,6 +20,24 @@ export interface CaptureEntry {
   requestBody?: string;
   postData?: string;
   body?: string;
+  requestHeaders?: Record<string, string>;
+}
+
+// Auth header names, most-specific first. We surface only the NAME the app uses so
+// the generated connector defaults to the right header; the secret value is never
+// read, stored, or returned.
+const AUTH_HEADERS = ["authorization", "x-api-key", "api-key", "x-auth-token", "x-access-token"];
+
+function detectAuthHeader(entries: CaptureEntry[]): string | undefined {
+  const counts = new Map<string, number>();
+  for (const e of entries) {
+    const names = Object.keys(e.requestHeaders ?? {}).map((h) => h.toLowerCase());
+    for (const h of AUTH_HEADERS) if (names.includes(h)) counts.set(h, (counts.get(h) ?? 0) + 1);
+  }
+  let best: string | undefined;
+  let n = 0;
+  for (const [h, c] of counts) if (c > n) { n = c; best = h; }
+  return best;
 }
 
 function toHar(entries: CaptureEntry[]): string {
@@ -40,14 +58,14 @@ function toHar(entries: CaptureEntry[]): string {
   });
 }
 
-export function normalizeCapture(input: unknown): { apiBase?: string; ops: OpenApiOp[] } {
+export function normalizeCapture(input: unknown): { apiBase?: string; ops: OpenApiOp[]; authHeader?: string } {
   // Already a HAR object.
   if (input && typeof input === "object" && !Array.isArray(input) && "log" in (input as object)) {
     return parseHar(JSON.stringify(input));
   }
   // A flat capture array.
   if (Array.isArray(input)) {
-    return parseHar(toHar(input as CaptureEntry[]));
+    return { ...parseHar(toHar(input as CaptureEntry[])), authHeader: detectAuthHeader(input as CaptureEntry[]) };
   }
   // A JSON string: HAR or capture array.
   if (typeof input === "string") {
@@ -57,7 +75,7 @@ export function normalizeCapture(input: unknown): { apiBase?: string; ops: OpenA
     } catch {
       return { ops: [] };
     }
-    if (Array.isArray(parsed)) return parseHar(toHar(parsed as CaptureEntry[]));
+    if (Array.isArray(parsed)) return { ...parseHar(toHar(parsed as CaptureEntry[])), authHeader: detectAuthHeader(parsed as CaptureEntry[]) };
     if (parsed && typeof parsed === "object" && "log" in (parsed as object)) return parseHar(input);
     return { ops: [] };
   }

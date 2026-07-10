@@ -90,6 +90,11 @@ describe("generateBundle", () => {
     expect(src).toMatch(/body:\s*z\.object/);
   });
 
+  it("bakes an observed auth header name as the connector's default", () => {
+    const src = indexTs(generateBundle(discovery({ hasPublicApi: true }), wire, [], [], undefined, "x-api-key"));
+    expect(src).toContain('process.env.AUTH_HEADER ?? "x-api-key"');
+  });
+
   it("uses the probe-discovered origin as the API base", () => {
     const d = discovery({
       probe: { reachable: true, origins: ["https://api.acme.example"], openApiUrl: "https://api.acme.example/openapi.json", apiType: "rest", aiEndpoints: [], hits: [], telemetry: [] },

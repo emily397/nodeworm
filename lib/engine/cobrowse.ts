@@ -171,7 +171,12 @@ export interface CapturedRequest {
   status: number;
   mimeType: string;
   requestBody?: string;
+  // Only the NAMES of auth-ish headers the app sent (never the secret values), so
+  // the generated connector defaults to the right header.
+  requestHeaders?: Record<string, string>;
 }
+
+const AUTH_HEADER_NAMES = new Set(["authorization", "x-api-key", "api-key", "x-auth-token", "x-access-token"]);
 
 export async function captureTraffic(
   connectUrl: string,
@@ -197,12 +202,18 @@ export async function captureTraffic(
         if (type !== "xhr" && type !== "fetch") return;
         const mime = res.headers()["content-type"] ?? "";
         if (!mime.includes("json")) return;
+        // Record only WHICH auth header the app used, never its value.
+        const authNames: Record<string, string> = {};
+        for (const name of Object.keys(req.headers())) {
+          if (AUTH_HEADER_NAMES.has(name.toLowerCase())) authNames[name.toLowerCase()] = "1";
+        }
         out.push({
           method: req.method(),
           url: req.url(),
           status: res.status(),
           mimeType: mime,
           requestBody: req.postData() ?? undefined,
+          ...(Object.keys(authNames).length ? { requestHeaders: authNames } : {}),
         });
       } catch {
         /* a single response we can't read is not fatal to the capture */

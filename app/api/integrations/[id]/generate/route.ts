@@ -170,7 +170,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     harResult.ops.length && !it.discovery.hasPublicApi
       ? { ...it.discovery, hasPublicApi: true, apiType: "rest" as const }
       : it.discovery;
-  const bundle = generateBundle(genDiscovery, it.wire, ops, gqlFields, apiBase);
+  const bundle = generateBundle(genDiscovery, it.wire, ops, gqlFields, apiBase, harResult.authHeader);
   const files = bundle.files;
   // Large bundles are stored packed (files emptied) so the Integration record stays
   // lean; readers hydrate. The response below still returns the full files.

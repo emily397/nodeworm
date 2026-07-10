@@ -37,6 +37,22 @@ describe("normalizeCapture", () => {
     expect(ops.find((o) => o.method === "put")!.bodyKeys).toContain("name");
   });
 
+  it("surfaces the observed auth header NAME (never the value)", () => {
+    const entries = [
+      { method: "GET", url: "https://api.z.com/v1/a", status: 200, mimeType: "application/json", requestHeaders: { authorization: "Bearer secret-abc", accept: "application/json" } },
+      { method: "GET", url: "https://api.z.com/v1/b", status: 200, mimeType: "application/json", requestHeaders: { Authorization: "Bearer secret-abc" } },
+    ];
+    const { authHeader } = normalizeCapture(entries);
+    expect(authHeader).toBe("authorization");
+    // the secret token value must never be surfaced anywhere
+    expect(JSON.stringify(normalizeCapture(entries))).not.toContain("secret-abc");
+  });
+
+  it("detects api-key style auth headers too", () => {
+    const entries = [{ method: "GET", url: "https://api.z.com/v1/a", status: 200, mimeType: "application/json", requestHeaders: { "x-api-key": "k123" } }];
+    expect(normalizeCapture(entries).authHeader).toBe("x-api-key");
+  });
+
   it("returns empty for junk without throwing", () => {
     expect(normalizeCapture("not json").ops).toEqual([]);
     expect(normalizeCapture(null).ops).toEqual([]);

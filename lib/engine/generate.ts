@@ -82,7 +82,7 @@ const TSCONFIG = JSON.stringify(
 
 // Shared runtime: env-configured base + auth, one real fetch helper, stdio + HTTP
 // transports, /health for NodeWorm's connector verification.
-function serverPrelude(app: string, apiBase: string | undefined): string {
+function serverPrelude(app: string, apiBase: string | undefined, authHeader?: string): string {
   return [
     `import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";`,
     `import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";`,
@@ -91,7 +91,7 @@ function serverPrelude(app: string, apiBase: string | undefined): string {
     `import { z } from "zod";`,
     ``,
     `const API_BASE = process.env.API_BASE_URL ?? ${JSON.stringify(apiBase ?? "")};`,
-    `const AUTH_HEADER = process.env.AUTH_HEADER ?? "authorization";`,
+    `const AUTH_HEADER = process.env.AUTH_HEADER ?? ${JSON.stringify(authHeader ?? "authorization")};`,
     `// Your own token for ${app} (from its OAuth flow or your own account), never shared with NodeWorm.`,
     `const AUTH_VALUE = process.env.API_TOKEN ? (process.env.AUTH_SCHEME ?? "Bearer") + " " + process.env.API_TOKEN : undefined;`,
     ``,
@@ -373,7 +373,7 @@ function readme(d: Discovery, kind: "mcp" | "scraper", name: string, apiBase?: s
   ].join("\n");
 }
 
-export function generateBundle(d: Discovery, w: WireConfig, ops: OpenApiOp[] = [], gqlFields: GraphqlField[] = [], apiBaseOverride?: string): GeneratedBundle {
+export function generateBundle(d: Discovery, w: WireConfig, ops: OpenApiOp[] = [], gqlFields: GraphqlField[] = [], apiBaseOverride?: string, authHeader?: string): GeneratedBundle {
   const kind: "mcp" | "scraper" = d.hasPublicApi ? "mcp" : "scraper";
   const name = `${slugName(d.appName)}-${kind === "mcp" ? "mcp" : "scraper"}`;
   // A spec-declared server (e.g. from APIs.guru) is authoritative over a guess.
@@ -381,8 +381,8 @@ export function generateBundle(d: Discovery, w: WireConfig, ops: OpenApiOp[] = [
 
   const src =
     kind === "mcp"
-      ? serverPrelude(d.appName, apiBase) + mcpTools(d, w, ops, gqlFields) + SERVER_MAIN
-      : SCRAPER_IMPORTS + serverPrelude(d.appName, apiBase) + scraperTools(d) + SERVER_MAIN;
+      ? serverPrelude(d.appName, apiBase, authHeader) + mcpTools(d, w, ops, gqlFields) + SERVER_MAIN
+      : SCRAPER_IMPORTS + serverPrelude(d.appName, apiBase, authHeader) + scraperTools(d) + SERVER_MAIN;
 
   const files: GeneratedFile[] = [
     { path: "package.json", content: pkgJson(name, kind === "scraper") },
