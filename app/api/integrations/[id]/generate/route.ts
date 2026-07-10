@@ -4,6 +4,7 @@ import { generateBundle, type GraphqlField } from "@/lib/engine/generate";
 import { recompute } from "@/lib/engine/orchestrate";
 import { packBundle, shouldPack, unpackBundle } from "@/lib/engine/bundle-store";
 import { apisGuruSpecUrl } from "@/lib/engine/intel/apisguru";
+import { parseHar } from "@/lib/engine/har";
 import type { OpenApiOp } from "@/lib/engine/types";
 
 // Unwrap a GraphQL introspection type ref down to its named type + kind.
@@ -137,17 +138,35 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   // OpenAPI source: the app's own discovered spec first; else fall back to the real
   // spec from the APIs.guru directory (thousands of apps that don't advertise one).
-  let specSource: "probe" | "apis.guru" | "none" = "none";
+  let specSource: "probe" | "apis.guru" | "har" | "none" = "none";
   let specUrl = it.discovery.probe?.openApiUrl;
   if (specUrl) specSource = "probe";
   else if (it.discovery.hasPublicApi && it.discovery.apiType !== "graphql") {
     const guru = await apisGuruSpecUrl(it.discovery.appUrl || it.appName);
     if (guru) { specUrl = guru.specUrl; specSource = "apis.guru"; }
   }
-  const { ops, apiBase } = it.discovery.hasPublicApi ? await parseOpenApi(specUrl) : { ops: [], apiBase: undefined };
+  // Captured-traffic source (highest signal): a HAR from the managed session /
+  // Helper / devtools export reveals the app's REAL private API. It unlocks
+  // generation even when the app advertises no public spec at all.
+  const body = (await req.json().catch(() => ({}))) as { har?: string };
+  const harResult = typeof body.har === "string" && body.har.length > 0 ? parseHar(body.har) : { ops: [], apiBase: undefined };
+
+  const specResult = it.discovery.hasPublicApi ? await parseOpenApi(specUrl) : { ops: [], apiBase: undefined };
+  // HAR ops win on conflicts (they are ground truth), then spec ops fill gaps.
+  const seen = new Set(harResult.ops.map((o) => `${o.method} ${o.path}`));
+  const ops = [...harResult.ops, ...specResult.ops.filter((o) => !seen.has(`${o.method} ${o.path}`))].slice(0, 40);
+  const apiBase = harResult.apiBase ?? specResult.apiBase;
+  if (harResult.ops.length) specSource = "har";
+
   const gqlFields =
     it.discovery.apiType === "graphql" ? await graphqlQueryFields(it.discovery.probe?.graphqlUrl) : [];
-  const bundle = generateBundle(it.discovery, it.wire, ops, gqlFields, apiBase);
+  // Captured traffic gives a real REST surface even for apps with no public API, so
+  // build a typed MCP (not a scraper) whenever HAR ops exist.
+  const genDiscovery =
+    harResult.ops.length && !it.discovery.hasPublicApi
+      ? { ...it.discovery, hasPublicApi: true, apiType: "rest" as const }
+      : it.discovery;
+  const bundle = generateBundle(genDiscovery, it.wire, ops, gqlFields, apiBase);
   const files = bundle.files;
   // Large bundles are stored packed (files emptied) so the Integration record stays
   // lean; readers hydrate. The response below still returns the full files.
