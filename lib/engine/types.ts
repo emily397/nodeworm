@@ -466,6 +466,10 @@ export interface OpenApiOp {
   path: string;
   name: string;
   summary?: string;
+  // Observed from captured traffic (HAR): top-level request-body field names and
+  // query-string param names, so generated tools get real typed inputs.
+  bodyKeys?: string[];
+  queryKeys?: string[];
 }
 
 export interface GeneratedBundle {

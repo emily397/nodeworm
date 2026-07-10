@@ -8,8 +8,25 @@
 import type { OpenApiOp } from "./types";
 
 interface HarEntry {
-  request?: { method?: string; url?: string };
+  request?: {
+    method?: string;
+    url?: string;
+    postData?: { mimeType?: string; text?: string };
+    queryString?: Array<{ name?: string }>;
+  };
   response?: { status?: number; content?: { mimeType?: string } };
+}
+
+// Top-level field names of a JSON request body, if it parsed as an object.
+function bodyKeysOf(entry: HarEntry): string[] {
+  const text = entry.request?.postData?.text;
+  if (!text) return [];
+  try {
+    const obj = JSON.parse(text);
+    return obj && typeof obj === "object" && !Array.isArray(obj) ? Object.keys(obj).slice(0, 24) : [];
+  } catch {
+    return [];
+  }
 }
 
 const ASSET_EXT = /\.(js|mjs|css|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|eot|map|mp4|webm|wasm|pdf)(\?|$)/i;
@@ -75,7 +92,16 @@ export function parseHar(harText: string): { apiBase?: string; ops: OpenApiOp[] 
     if (seen.has(key)) continue;
     seen.add(key);
 
-    ops.push({ method: method.toLowerCase(), path, name: opName(method, path), summary: `${method} ${path} (captured from live traffic)` });
+    const queryKeys = [...new Set([...url.searchParams.keys(), ...(e.request?.queryString ?? []).map((q) => q.name ?? "").filter(Boolean)])];
+    const bodyKeys = bodyKeysOf(e);
+    ops.push({
+      method: method.toLowerCase(),
+      path,
+      name: opName(method, path),
+      summary: `${method} ${path} (captured from live traffic)`,
+      ...(bodyKeys.length ? { bodyKeys } : {}),
+      ...(queryKeys.length ? { queryKeys } : {}),
+    });
     if (ops.length >= 40) break;
   }
 

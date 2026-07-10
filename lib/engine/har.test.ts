@@ -44,4 +44,24 @@ describe("parseHar", () => {
     expect(parseHar("not json").ops).toEqual([]);
     expect(parseHar(JSON.stringify({ log: {} })).ops).toEqual([]);
   });
+
+  it("captures request body keys and query keys from observed traffic", () => {
+    const withBody = JSON.stringify({
+      log: {
+        entries: [
+          {
+            request: {
+              method: "POST",
+              url: "https://api.acme.com/v2/tasks?notify=true&team=eng",
+              postData: { mimeType: "application/json", text: '{"title":"x","done":false,"assignee":"me"}' },
+            },
+            response: { status: 201, content: { mimeType: "application/json" } },
+          },
+        ],
+      },
+    });
+    const op = parseHar(withBody).ops.find((o) => o.method === "post")!;
+    expect(op.bodyKeys).toEqual(expect.arrayContaining(["title", "done", "assignee"]));
+    expect(op.queryKeys).toEqual(expect.arrayContaining(["notify", "team"]));
+  });
 });

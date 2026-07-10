@@ -73,6 +73,23 @@ describe("generateBundle", () => {
     expect(b.files.find((f) => f.path === "package.json")!.content).toContain("playwright");
   });
 
+  it("emits typed body + query params on tools built from captured traffic", () => {
+    const op = {
+      method: "post",
+      path: "/v1/tasks",
+      name: "post_v1_tasks",
+      bodyKeys: ["title", "assignee"],
+      queryKeys: ["notify"],
+    };
+    const src = indexTs(generateBundle(discovery({ hasPublicApi: true }), wire, [op]));
+    expect(src).toContain("post_v1_tasks");
+    expect(src).toContain("title");
+    expect(src).toContain("assignee");
+    expect(src).toContain("notify");
+    // typed object body, not the generic z.unknown passthrough
+    expect(src).toMatch(/body:\s*z\.object/);
+  });
+
   it("uses the probe-discovered origin as the API base", () => {
     const d = discovery({
       probe: { reachable: true, origins: ["https://api.acme.example"], openApiUrl: "https://api.acme.example/openapi.json", apiType: "rest", aiEndpoints: [], hits: [], telemetry: [] },

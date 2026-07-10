@@ -236,8 +236,20 @@ function mcpTools(d: Discovery, w: WireConfig, ops: OpenApiOp[], gqlFields: Grap
   for (const op of ops.slice(0, 15)) {
     const params = [...op.path.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]);
     const schema: string[] = params.map((p) => `    ${JSON.stringify(p)}: z.string(),`);
-    schema.push(`    query: z.record(z.string()).optional(),`);
-    if (op.method !== "get" && op.method !== "delete") schema.push(`    body: z.unknown().optional(),`);
+    // Observed query params (from captured traffic) become a typed object; otherwise
+    // a permissive record so the caller can still pass anything.
+    if (op.queryKeys?.length) {
+      schema.push(`    query: z.object({ ${op.queryKeys.map((k) => `${JSON.stringify(k)}: z.string().optional()`).join(", ")} }).partial().optional(),`);
+    } else {
+      schema.push(`    query: z.record(z.string()).optional(),`);
+    }
+    if (op.method !== "get" && op.method !== "delete") {
+      if (op.bodyKeys?.length) {
+        schema.push(`    body: z.object({ ${op.bodyKeys.map((k) => `${JSON.stringify(k)}: z.unknown().optional()`).join(", ")} }).partial().optional(),`);
+      } else {
+        schema.push(`    body: z.unknown().optional(),`);
+      }
+    }
     const argNames = [...params.map((p) => JSON.stringify(p).replace(/"/g, "")), "query"];
     if (op.method !== "get" && op.method !== "delete") argNames.push("body");
     let pathExpr = JSON.stringify(op.path);
