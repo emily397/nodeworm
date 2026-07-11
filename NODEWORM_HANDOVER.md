@@ -60,8 +60,13 @@ Multi-tenant IDOR fixed (`getOwnedIntegration` across `[id]/**` incl. oauth star
 ## The autonomy loop (Phase 2 flagship, `lib/engine/autobuild.ts`)
 One button, **⚡ Capture & build automatically**, on the run console. `POST /autobuild` runs a dependency-injected orchestrator that chains the server-autonomous steps (capture the live managed session's real traffic -> generate a typed connector) and persists per-step status on `it.autobuild` after every transition: resumable, honest skip/failure per step, live progress. `capture-pipeline.ts` + `generate-pipeline.ts` hold the shared logic so the loop and the manual `/session/capture` + `/generate` routes run identical code (those routes are now thin wrappers). `AutobuildProgress` on `GeneratedConnectorCard` renders the persisted steps in the phase-rail dot language; on success the card flips to the download + Agent build/tunnel view. Build/tunnel/verify stay Agent-driven (they need a local folder), surfaced right after generate.
 
+## Self-maintenance (Phase 4, partial)
+- **Connector health monitor** (`lib/engine/health.ts` pure fold + `health-check.ts` I/O): scheduled re-verify of live connectors (`/api/cron/health`, 6h, CRON_SECRET-gated) folds each real read into `connector.health`; sustained drift of a generated connector auto-regenerates a fresh bundle (redeploy stays with the Agent). On-demand `POST /connector/health`.
+- **Cross-user reuse** (`connector-registry.ts` + Neon `connector_registry`): `computeReuseKey` keys a stored bundle by the surface; the 2nd user of an app skips generation (`specSource=reused`). Creds never shared, code is. Prod-verified.
+- **Still open in Phase 4:** LLM refinement of generated tool docs behind snapshot evals; inbound webhook receiver completion.
+
 ## Recently shipped this arc (all TDD, prod-verified)
-Autonomy loop (capture -> generate, one click, live progress) · HAR to typed MCP · typed params from observed payloads · discovery cache (4x) · auto-capture from managed session (CDP) · captured connectors self-authenticate · vibrant UI overhaul (aurora, gradients, rainbow pipeline, saturated gallery).
+Connector health monitor + auto-repair · cross-user connector reuse · autonomy loop (capture -> generate, one click, live progress) · HAR to typed MCP · typed params from observed payloads · discovery cache (4x) · auto-capture from managed session (CDP) · captured connectors self-authenticate · vibrant UI overhaul (aurora, gradients, rainbow pipeline, saturated gallery).
 
 ## Honest open items / next moves
 - **keys: VERIFIED LIVE IN PROD 2026-07-11** (this section was stale; keys landed Jun 24). Managed session live via Steel, capture live (CDP attach proven), `EXECUTE_SIGNING_KEY` set (pubkey route serves Ed25519), LLM discovery on (`/api/health` mode ai). One anomaly: `BROWSERBASE_API_KEY` is set but sessions fall back to Steel, so the Browserbase key is out of minutes or invalid; Steel carries the load.

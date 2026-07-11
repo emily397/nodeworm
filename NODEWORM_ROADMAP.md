@@ -28,12 +28,12 @@ verify -> `connected-via-connector`) that run on the user's local machine.
 - **Residual for a future pass:** Windows/Linux Agent runs a signed plan end to end (proven earlier this arc); a real macOS Agent run of a signed tunnel plan is unproven for lack of a Mac in this environment, but the extraction + pin logic is verified against the real binaries.
 
 ## Phase 4 - Intelligence + self-maintenance
-What makes the product defensible rather than a builder script.
-- Connector health monitor: scheduled re-verify of live connectors; on drift, re-probe -> regenerate -> diff -> redeploy (auto-repair without user action).
-- LLM refinement pass over generated tool names/descriptions/param docs (free-first cascade), gated by snapshot evals so regressions can't ship.
-- Cross-user connector reuse: registry keyed by app + specSource hash; second user of an app skips generation entirely (creds stay vault-scoped, code is shared).
-- Inbound completion: webhook receiver plumbing wherever `wire` chose webhooks over polling.
-- **Exit test:** deliberately break a connector's endpoint, watch it self-heal; second account connects the same app with zero generation time.
+What makes the product defensible rather than a builder script. **Exit test MET
+2026-07-11** (both halves): self-heal on drift + zero-generation reuse for a second user.
+- **Connector health monitor: DONE.** Scheduled re-verify (`/api/cron/health`, every 6h, CRON_SECRET-gated + verified 401 without it) folds each probe into durable `connector.health` (`nextHealth`); sustained drift of a GENERATED connector auto-regenerates a fresh bundle (redeploy stays with the Agent). Offline != drift; researched/hosted flagged not regenerated. TDD (15 across health + health-check). On-demand `POST /connector/health` too.
+- **Cross-user connector reuse: DONE + prod-verified.** `computeReuseKey` (spec-driven keys cross-user, captured-traffic keys user-specific, conventions scrapers per-app) + Neon `connector_registry`; `generateForIntegration` reuses first (`specSource=reused`) and registers after. Proved live: user B on the same app got `reused:true`, zero generation. Creds never shared, only code.
+- **LLM refinement of generated tool docs (snapshot-eval-gated): NOT STARTED.** Enhancement beyond the exit test.
+- **Inbound webhook receiver completion: NOT STARTED.** Enhancement beyond the exit test.
 
 ## Phase 5 - Perf + polish
 Deliberately last: the known-risky SwarmConsole refactor should ride on a stable feature set.
