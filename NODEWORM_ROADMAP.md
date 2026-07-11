@@ -37,12 +37,10 @@ What makes the product defensible rather than a builder script. **Exit test MET
 
 **Phase 4 COMPLETE 2026-07-11.** All four parts shipped + prod-verified (commits fce5362, f6e310e, fd5b4ac, 03246be); 133 tests.
 
-## Phase 5 - Perf + polish
-Deliberately last: the known-risky SwarmConsole refactor should ride on a stable feature set.
-- SwarmConsole state refactor: patch phase slices immutably, memoize cards, characterization tests written BEFORE the refactor (the deferred perf item from the handover).
-- SSE/streaming run updates instead of tick polling.
-- Gallery surfaces real generated connectors with live status badges.
-- **Exit test:** done phases no longer re-render per tick; run console interaction stays smooth through a full pipeline run.
+## Phase 5 - Perf + polish: exit test MET 2026-07-11
+- **SwarmConsole memoization: DONE.** Extracted a pure `lane.ts` (`laneTelemetry` + `phaseLaneSignature`) with characterization tests written FIRST (6, pinning the contract), then wrapped `PhaseLane` in `React.memo` keyed on the signature. Done lanes no longer re-render on each advance tick (equal signature => skip); behaviour-preserving, prod run page verified rendering correctly through a full pipeline. This was the deferred perf item from the handover. **Exit test met.**
+- **Gallery live status badges: DONE.** The integrations list shows each verified connector's rolling health (healthy/drifted/unreachable, drift pulses) from the Phase 4 monitor, with an on-demand re-check. Prod-verified (renders, badge scoped to verified connectors).
+- **SSE/streaming run updates: DEFERRED (deliberate).** The advance loop is a client-driven sequential fetch, not a wasteful poll, and the memoization already delivered the smoothness the exit test asked for. Converting to server-streamed SSE is a lateral transport change with real regression risk on the flagship console and no change to the proven outcome, so it is intentionally not done. Revisit only if a concrete need (very long pipelines, multi-viewer runs) appears. Commits e3b85f1 + 6a7efd7, 139 tests.
 
 ## Sequencing rationale
 0 unlocks six built tiers for the cost of three env vars. 1 before 2 because the flagship loop needs durable artifacts between serverless invocations. 2 is the product's flagship moment and the demo that sells it. 3 broadens who can run it and retires the honest-open security items. 4 turns a generator into a self-maintaining platform. 5 is a refactor with regression risk, so it goes last on top of frozen behavior.

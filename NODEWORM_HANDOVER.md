@@ -1,6 +1,6 @@
 # NodeWorm - Handover / Framework Outline
 
-_Last updated: 2026-07-11 · commit `2d0f7f5` · 91 tests green · live at https://abie-three.vercel.app_
+_Last updated: 2026-07-11 · commit `6a7efd7` · 139 tests green · live at https://abie-three.vercel.app · **roadmap Phases 0-5 complete** (NODEWORM_ROADMAP.md)_
 
 ## What NodeWorm is
 A user types a plain-language request ("connect Notion to Slack", or just "Stripe") and NodeWorm **autonomously finds the best way to connect that app and builds the connector** (hosted MCP, OAuth API, generated MCP/scraper, managed browser session, hosted bridge, or a self-hosted connector). The user does nothing but type and click OAuth popups. North-star: works for ANY app, even undocumented ones, with honest "here is the one human step" seams (never fake "connected").
@@ -65,7 +65,7 @@ One button, **⚡ Capture & build automatically**, on the run console. `POST /au
 - **Cross-user reuse** (`connector-registry.ts` + Neon `connector_registry`): `computeReuseKey` keys a stored bundle by the surface; the 2nd user of an app skips generation (`specSource=reused`). Creds never shared, code is. Prod-verified.
 - **LLM tool-doc refinement** (`refine.ts`): opt-in `{refine:true}`; free-first LLM rewrites tool descriptions behind a snapshot gate (`validateRefinement`) that keeps the tool set invariant and drops unsafe strings.
 - **Inbound webhook receiver** (`inbound.ts` + `/inbound` route): per-integration secret URL, token-gated public POST, challenge handshake, bounded event log. Prod-verified.
-- **Phase 4 COMPLETE** (health monitor, reuse, refinement, inbound). Next: Phase 5 (perf: SwarmConsole memoization, SSE, gallery live badges).
+- **Phases 4 + 5 COMPLETE.** P5: SwarmConsole `PhaseLane` memoized via pure `lane.ts` signature (characterization-tested first) so done phases stop re-rendering per tick; gallery live health badges surfacing the P4 monitor. SSE deliberately deferred (lateral transport change, exit test already met by memoization). **Whole roadmap (0-5) done.**
 
 ## Recently shipped this arc (all TDD, prod-verified)
 Connector health monitor + auto-repair · cross-user connector reuse · autonomy loop (capture -> generate, one click, live progress) · HAR to typed MCP · typed params from observed payloads · discovery cache (4x) · auto-capture from managed session (CDP) · captured connectors self-authenticate · vibrant UI overhaul (aurora, gradients, rainbow pipeline, saturated gallery).
