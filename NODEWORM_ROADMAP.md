@@ -32,8 +32,10 @@ What makes the product defensible rather than a builder script. **Exit test MET
 2026-07-11** (both halves): self-heal on drift + zero-generation reuse for a second user.
 - **Connector health monitor: DONE.** Scheduled re-verify (`/api/cron/health`, every 6h, CRON_SECRET-gated + verified 401 without it) folds each probe into durable `connector.health` (`nextHealth`); sustained drift of a GENERATED connector auto-regenerates a fresh bundle (redeploy stays with the Agent). Offline != drift; researched/hosted flagged not regenerated. TDD (15 across health + health-check). On-demand `POST /connector/health` too.
 - **Cross-user connector reuse: DONE + prod-verified.** `computeReuseKey` (spec-driven keys cross-user, captured-traffic keys user-specific, conventions scrapers per-app) + Neon `connector_registry`; `generateForIntegration` reuses first (`specSource=reused`) and registers after. Proved live: user B on the same app got `reused:true`, zero generation. Creds never shared, only code.
-- **LLM refinement of generated tool docs (snapshot-eval-gated): NOT STARTED.** Enhancement beyond the exit test.
-- **Inbound webhook receiver completion: NOT STARTED.** Enhancement beyond the exit test.
+- **LLM refinement of generated tool docs: DONE.** Opt-in `{refine:true}`; free-first LLM rewrites tool descriptions behind a snapshot gate (`validateRefinement`) that keeps the tool set invariant and drops unsafe strings, so a bad reply can't ship. Prod-verified safe.
+- **Inbound webhook receiver: DONE + prod-verified.** `GET /inbound` issues a per-integration secret URL; public token-gated `POST /inbound` answers the challenge handshake (generic + Slack) and records a bounded event log. Verified live: challenge echoed, event recorded, wrong token 401, token redacted on generic reads.
+
+**Phase 4 COMPLETE 2026-07-11.** All four parts shipped + prod-verified (commits fce5362, f6e310e, fd5b4ac, 03246be); 133 tests.
 
 ## Phase 5 - Perf + polish
 Deliberately last: the known-risky SwarmConsole refactor should ride on a stable feature set.

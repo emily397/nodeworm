@@ -63,7 +63,9 @@ One button, **⚡ Capture & build automatically**, on the run console. `POST /au
 ## Self-maintenance (Phase 4, partial)
 - **Connector health monitor** (`lib/engine/health.ts` pure fold + `health-check.ts` I/O): scheduled re-verify of live connectors (`/api/cron/health`, 6h, CRON_SECRET-gated) folds each real read into `connector.health`; sustained drift of a generated connector auto-regenerates a fresh bundle (redeploy stays with the Agent). On-demand `POST /connector/health`.
 - **Cross-user reuse** (`connector-registry.ts` + Neon `connector_registry`): `computeReuseKey` keys a stored bundle by the surface; the 2nd user of an app skips generation (`specSource=reused`). Creds never shared, code is. Prod-verified.
-- **Still open in Phase 4:** LLM refinement of generated tool docs behind snapshot evals; inbound webhook receiver completion.
+- **LLM tool-doc refinement** (`refine.ts`): opt-in `{refine:true}`; free-first LLM rewrites tool descriptions behind a snapshot gate (`validateRefinement`) that keeps the tool set invariant and drops unsafe strings.
+- **Inbound webhook receiver** (`inbound.ts` + `/inbound` route): per-integration secret URL, token-gated public POST, challenge handshake, bounded event log. Prod-verified.
+- **Phase 4 COMPLETE** (health monitor, reuse, refinement, inbound). Next: Phase 5 (perf: SwarmConsole memoization, SSE, gallery live badges).
 
 ## Recently shipped this arc (all TDD, prod-verified)
 Connector health monitor + auto-repair · cross-user connector reuse · autonomy loop (capture -> generate, one click, live progress) · HAR to typed MCP · typed params from observed payloads · discovery cache (4x) · auto-capture from managed session (CDP) · captured connectors self-authenticate · vibrant UI overhaul (aurora, gradients, rainbow pipeline, saturated gallery).
