@@ -6,6 +6,46 @@ import type { Integration } from "@/lib/engine/types";
 import { StatusChip } from "@/app/components/ui";
 import { timeAgo } from "@/app/components/status";
 
+// Live connector health, surfaced from the Phase 4 monitor. A verified connector
+// shows its rolling state; clicking re-verifies it on demand.
+const HEALTH_STYLE: Record<string, { color: string; label: string; pulse: boolean }> = {
+  healthy: { color: "var(--color-live)", label: "healthy", pulse: false },
+  drifted: { color: "var(--color-berry)", label: "drifted", pulse: true },
+  unreachable: { color: "var(--color-amber)", label: "unreachable", pulse: true },
+  unchecked: { color: "var(--color-muted)", label: "unchecked", pulse: false },
+};
+
+function HealthBadge({ it, onChange }: { it: Integration; onChange: (health: NonNullable<Integration["connector"]>["health"]) => void }) {
+  const [busy, setBusy] = useState(false);
+  const state = it.connector?.health?.state ?? "unchecked";
+  const s = HEALTH_STYLE[state] ?? HEALTH_STYLE.unchecked;
+
+  async function recheck() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const data = await fetch(`/api/integrations/${it.id}/connector/health`, { method: "POST" }).then((r) => r.json());
+      if (data.ok) onChange(data.health);
+    } catch {
+      // leave prior state; the badge stays honest
+    }
+    setBusy(false);
+  }
+
+  return (
+    <button
+      onClick={recheck}
+      disabled={busy}
+      title="Re-verify this connector now"
+      className="inline-flex items-center gap-1.5 font-mono text-[0.62rem] uppercase tracking-wider px-2 py-1 rounded-lg"
+      style={{ color: s.color, border: `1px solid color-mix(in srgb, ${s.color} 40%, transparent)` }}
+    >
+      <span className={`dot ${s.pulse ? "pulse-dot" : ""}`} style={{ width: 7, height: 7, background: s.color }} />
+      {busy ? "checking..." : s.label}
+    </button>
+  );
+}
+
 export function IntegrationsList({ initial }: { initial: Integration[] }) {
   const [items, setItems] = useState(initial);
   const now = Date.now();
@@ -13,6 +53,10 @@ export function IntegrationsList({ initial }: { initial: Integration[] }) {
   async function remove(id: string) {
     setItems((prev) => prev.filter((i) => i.id !== id));
     await fetch(`/api/integrations/${id}`, { method: "DELETE" }).catch(() => {});
+  }
+
+  function setHealth(id: string, health: NonNullable<Integration["connector"]>["health"]) {
+    setItems((prev) => prev.map((i) => (i.id === id && i.connector ? { ...i, connector: { ...i.connector, health } } : i)));
   }
 
   if (items.length === 0) {
@@ -58,6 +102,8 @@ export function IntegrationsList({ initial }: { initial: Integration[] }) {
                 {timeAgo(it.updatedAt, now)}
               </span>
             </div>
+
+            {it.connector?.verified && <HealthBadge it={it} onChange={(h) => setHealth(it.id, h)} />}
 
             <StatusChip status={it.status} />
 
