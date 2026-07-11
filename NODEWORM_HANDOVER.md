@@ -1,6 +1,6 @@
 # NodeWorm - Handover / Framework Outline
 
-_Last updated: 2026-07-11 · commit `e4442af` · 76 tests green · live at https://abie-three.vercel.app_
+_Last updated: 2026-07-11 · commit `2d0f7f5` · 91 tests green · live at https://abie-three.vercel.app_
 
 ## What NodeWorm is
 A user types a plain-language request ("connect Notion to Slack", or just "Stripe") and NodeWorm **autonomously finds the best way to connect that app and builds the connector** (hosted MCP, OAuth API, generated MCP/scraper, managed browser session, hosted bridge, or a self-hosted connector). The user does nothing but type and click OAuth popups. North-star: works for ANY app, even undocumented ones, with honest "here is the one human step" seams (never fake "connected").
@@ -57,8 +57,11 @@ Multi-tenant IDOR fixed (`getOwnedIntegration` across `[id]/**` incl. oauth star
 - Pages: `app/page.tsx` (hero + 5-agent rainbow pipeline + decision tree + gallery teaser), `app/gallery/*` (nodes + worms + go-fish + composer; `lib/catalog.ts` saturated category colors), `app/run/[id]/SwarmConsole.tsx` (the executing pipeline, flowing rail, report panel, all the connect cards incl. GeneratedConnectorCard).
 - **CLAUDE.md rule:** invoke `frontend-design` skill before any UI work. Verify visuals via computed styles + production-CSS grep (preview screenshots TIME OUT on the continuous aurora, a known quirk not a bug; Tailwind v4 dev cache lies, always check `.next/static/chunks/*.css`).
 
+## The autonomy loop (Phase 2 flagship, `lib/engine/autobuild.ts`)
+One button, **⚡ Capture & build automatically**, on the run console. `POST /autobuild` runs a dependency-injected orchestrator that chains the server-autonomous steps (capture the live managed session's real traffic -> generate a typed connector) and persists per-step status on `it.autobuild` after every transition: resumable, honest skip/failure per step, live progress. `capture-pipeline.ts` + `generate-pipeline.ts` hold the shared logic so the loop and the manual `/session/capture` + `/generate` routes run identical code (those routes are now thin wrappers). `AutobuildProgress` on `GeneratedConnectorCard` renders the persisted steps in the phase-rail dot language; on success the card flips to the download + Agent build/tunnel view. Build/tunnel/verify stay Agent-driven (they need a local folder), surfaced right after generate.
+
 ## Recently shipped this arc (all TDD, prod-verified)
-HAR to typed MCP · typed params from observed payloads · discovery cache (4x) · auto-capture from managed session (CDP) · captured connectors self-authenticate · vibrant UI overhaul (aurora, gradients, rainbow pipeline, saturated gallery).
+Autonomy loop (capture -> generate, one click, live progress) · HAR to typed MCP · typed params from observed payloads · discovery cache (4x) · auto-capture from managed session (CDP) · captured connectors self-authenticate · vibrant UI overhaul (aurora, gradients, rainbow pipeline, saturated gallery).
 
 ## Honest open items / next moves
 - **keys: VERIFIED LIVE IN PROD 2026-07-11** (this section was stale; keys landed Jun 24). Managed session live via Steel, capture live (CDP attach proven), `EXECUTE_SIGNING_KEY` set (pubkey route serves Ed25519), LLM discovery on (`/api/health` mode ai). One anomaly: `BROWSERBASE_API_KEY` is set but sessions fall back to Steel, so the Browserbase key is out of minutes or invalid; Steel carries the load.
