@@ -3,6 +3,7 @@
 
 import type { AutobuildState } from "./autobuild";
 import type { ConnectorHealth } from "./health";
+import type { InboundConfig } from "./inbound";
 
 export type AuthType = "oauth2" | "apikey" | "none" | "browser" | "unknown";
 
@@ -460,6 +461,10 @@ export interface Integration {
   // Per-step status of the autonomy loop (capture -> generate) so the client can
   // show honest live progress and the loop is resumable. Written by /autobuild.
   autobuild?: AutobuildState;
+  // Inbound webhook receiver: a per-integration secret URL the app POSTs events to,
+  // with a bounded event log. Present once inbound webhooks are enabled. The token is
+  // server-only (redacted before the client) but travels in the registered URL.
+  inbound?: InboundConfig;
 }
 
 // ---- Generated connector (generated-mcp / generated-scraper) ---------------

@@ -186,9 +186,12 @@ export async function removeIntegration(id: string): Promise<boolean> {
 // here (only masked refs in secrets), so this is the sole client-facing scrub.
 export function redactIntegration(it: Integration): Integration {
   it = hydrateGenerated(it);
-  if (!it.oauth && !it.cobrowse && !it.managedSession) return it;
+  if (!it.oauth && !it.cobrowse && !it.managedSession && !it.inbound) return it;
   const copy = { ...it };
   delete copy.oauth;
+  // The inbound webhook token is a secret in the registered URL; never ship it on a
+  // generic record read (the dedicated GET /inbound returns the full URL to the owner).
+  if (copy.inbound) copy.inbound = { ...copy.inbound, token: "" };
   // connectUrl is a control endpoint for the remote browser; keep the user-facing
   // liveViewUrl but never ship the connectUrl (or the durable contextId) to the client.
   if (copy.cobrowse) copy.cobrowse = { ...copy.cobrowse, connectUrl: "" };
