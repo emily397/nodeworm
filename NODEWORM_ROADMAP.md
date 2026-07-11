@@ -20,11 +20,12 @@ verify -> `connected-via-connector`) that run on the user's local machine.
 - Verified live in prod (`abie-three`): skip path (no session -> generate ok), real capture path (Steel CDP attach -> capture ok -> generate ok), status -> `generated`, plus local UI run (button -> live progress -> download/build view).
 - **Honest boundary:** the loop owns exactly what the cloud can do unattended (capture + generate). Build / tunnel / verify stay Agent-driven because they run against a folder only the user's machine knows; they are wired and surfaced immediately after generate. The full "one login + one click -> live tunneled MCP" still needs the local Agent running + the human login, which can't be headless-tested end to end.
 
-## Phase 3 - Reach + hardening
-- cloudflared darwin/linux: handle `.tgz` extraction (darwin currently returns null), platform matrix test for the Agent.
-- Close the documented security decisions: digest-pin the agent docker argv (RCE primitive), token-handshake the WS agent beyond the spoofable origin gate, decide per-user vs shared Signal bridge and either provision per-user or document the shared-account limit in-product.
-- Extension store publish follow-through when the Google account is ready (re-sync store id into native-host allowlist, set `NEXT_PUBLIC_EXTENSION_URL`).
-- **Exit test:** Agent runs a signed plan on macOS/Linux; each security item closed or explicitly accepted in DECISIONS.md.
+## Phase 3 - Reach + hardening: DONE (code items), 2026-07-11
+- **cloudflared macOS: DONE.** `darwin/x64` + `darwin/arm64` pinned with real archive hashes; the Agent verifies the .tgz hash then extracts the inner binary in pure Node (no system `tar`) and re-extracts from the pin-verified archive before every spawn. Extraction proven against both real artifacts (valid Mach-O). Linux was already pinned.
+- **Security items: DONE / accepted in DECISIONS.md.** Docker RCE closed (`validateDockerArgv`, TDD, agent-mirrored: read-only introspection or `docker run` with a @sha256-pinned image and no sandbox-breaching flags). WS origin gate: real boundary is the Ed25519 plan signature (documented); DNS-rebinding closed via Host-header pinning; a secret token was considered and rejected (can't defend against a same-user local process). Signal bridge: shared instance accepted for now (per-user needs Fly billing), disclosed honestly in-product at consent.
+- **Extension store publish: BLOCKED (external).** Waits on Emily's Google account; post-publish, re-sync the store id into the native-host allowlist and set `NEXT_PUBLIC_EXTENSION_URL`. Not code-blocked.
+- Commit `5682379`, 99 tests green, agent host-pin verified at runtime.
+- **Residual for a future pass:** Windows/Linux Agent runs a signed plan end to end (proven earlier this arc); a real macOS Agent run of a signed tunnel plan is unproven for lack of a Mac in this environment, but the extraction + pin logic is verified against the real binaries.
 
 ## Phase 4 - Intelligence + self-maintenance
 What makes the product defensible rather than a builder script.
