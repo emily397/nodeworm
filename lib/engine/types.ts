@@ -2,6 +2,7 @@
 // Core type system shared by the engine, store, API and UI.
 
 import type { AutobuildState } from "./autobuild";
+import type { ConnectorHealth } from "./health";
 
 export type AuthType = "oauth2" | "apikey" | "none" | "browser" | "unknown";
 
@@ -432,6 +433,9 @@ export interface Integration {
     registeredHint?: string;
     methodName?: string;
     methodKind?: ResearchKind;
+    // Rolling health from scheduled re-verification (nextHealth fold). Drives the
+    // self-maintenance loop: sustained drift of a generated connector auto-regenerates.
+    health?: ConnectorHealth;
   };
   // Explicit, recorded consent to automate a gated developer portal (Shopify,
   // Google, Stripe, etc.) after seeing the accurate ToS/account-risk caveat. Per run.
