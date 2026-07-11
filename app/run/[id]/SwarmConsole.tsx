@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import type {
   ArchitectPlan,
   AuditResult,
@@ -20,6 +20,7 @@ import { StatusChip } from "@/app/components/ui";
 import { PHASE_DOT } from "@/app/components/status";
 import { ReelItIn } from "@/app/components/ReelItIn";
 import { AgentExecutionModal } from "./AgentExecutionModal";
+import { laneTelemetry, phaseLaneSignature, reportTelemetry, type LaneProps } from "./lane";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -135,37 +136,17 @@ function ProgressMeter({ online, total }: { online: number; total: number }) {
   );
 }
 
-function PhaseLane({
-  index,
-  phase,
-  isActive,
-  isLast,
-  discovery,
-  plan,
-  wire,
-  audit,
-  report,
-}: {
-  index: number;
-  phase: Integration["phases"][number];
-  isActive: boolean;
-  isLast: boolean;
-  discovery?: Discovery;
-  plan?: ArchitectPlan;
-  wire?: WireConfig;
-  audit?: AuditResult;
-  report?: Report;
-}) {
-  const dot = PHASE_DOT[phase.status];
-  const done = phase.status === "done";
-  const telemetry =
-    discovery?.telemetry ??
-    plan?.telemetry ??
-    wire?.telemetry ??
-    audit?.telemetry ??
-    (report ? reportTelemetry(report) : undefined);
+// Memoized so the per-tick advance loop (which replaces every phase object) only
+// re-renders lanes whose output actually changed. The comparator comes from the
+// pure phaseLaneSignature (characterization-tested in lane.test.ts): equal signature
+// => skip. Without this, every done phase re-rendered on every tick.
+const PhaseLane = memo(
+  function PhaseLane({ phase, isActive, isLast, discovery, plan, wire, audit, report }: LaneProps) {
+    const dot = PHASE_DOT[phase.status];
+    const done = phase.status === "done";
+    const telemetry = laneTelemetry({ discovery, plan, wire, audit, report });
 
-  return (
+    return (
     <div className="flex gap-4">
       {/* Rail */}
       <div className="flex flex-col items-center pt-5">
@@ -234,8 +215,10 @@ function PhaseLane({
         {done && audit && <AuditResultView a={audit} />}
       </div>
     </div>
-  );
-}
+    );
+  },
+  (a, b) => phaseLaneSignature(a) === phaseLaneSignature(b),
+);
 
 function TelemetryRow({ line, delayMs }: { line: TelemetryLine; delayMs: number }) {
   const colorMap: Record<string, string> = {
@@ -2686,10 +2669,3 @@ function authLabel(a: string): string {
   }
 }
 
-function reportTelemetry(r: Report): TelemetryLine[] {
-  return [
-    { level: "info", text: "compiling integration report..." },
-    { level: r.status === "blocked" ? "warn" : "ok", text: r.headline },
-    { level: "action", text: `status: ${r.status}` },
-  ];
-}
