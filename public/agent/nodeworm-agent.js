@@ -11,6 +11,7 @@ const http = require("http");
 const net = require("net");
 const os = require("os");
 const path = require("path");
+const zlib = require("zlib");
 
 const VERSION = "3.0.0";
 const PORT = 39742;
@@ -198,6 +199,40 @@ function runNpm(argv, cwd, timeoutMs) {
   });
 }
 
+// Docker argv allowlist. Mirror of lib/engine/execute/docker-run.ts (the tested
+// source of truth). A docker task is an RCE primitive if unconstrained, so even a
+// signed plan may only run read-only introspection or `docker run` with a
+// @sha256:-pinned image and no sandbox-breaching flags. Keep in sync with that file.
+const DOCKER_READONLY = new Set(["ps", "inspect", "logs", "version", "info", "port", "top"]);
+const DOCKER_DANGEROUS = new Set([
+  "--privileged", "-v", "--volume", "--mount", "--device", "--cap-add", "--pid",
+  "--ipc", "--uts", "--userns", "--security-opt", "--cgroup-parent", "--entrypoint", "--group-add",
+]);
+const DOCKER_DIGEST = /@sha256:[0-9a-f]{64}$/;
+function validateDockerArgv(argv) {
+  if (!Array.isArray(argv) || argv.length === 0) return { ok: false, reason: "empty command" };
+  if (argv.some((a) => typeof a !== "string")) return { ok: false, reason: "args must be strings" };
+  if (argv[0] !== "docker") return { ok: false, reason: `binary not allowed: ${argv[0]}` };
+  const sub = argv[1];
+  if (!sub) return { ok: false, reason: "docker needs a subcommand" };
+  if (DOCKER_READONLY.has(sub)) return { ok: true };
+  if (sub !== "run") return { ok: false, reason: `docker ${sub} not allowed` };
+  const rest = argv.slice(2);
+  let pinned = false;
+  for (let i = 0; i < rest.length; i++) {
+    const tok = rest[i];
+    const base = tok.split("=")[0];
+    if (DOCKER_DANGEROUS.has(base)) return { ok: false, reason: `docker run flag not allowed: ${base}` };
+    if (base === "--network" || base === "--net") {
+      const val = tok.includes("=") ? tok.split("=")[1] : rest[i + 1];
+      if (val === "host") return { ok: false, reason: "docker run --network host not allowed" };
+    }
+    if (DOCKER_DIGEST.test(tok)) pinned = true;
+  }
+  if (!pinned) return { ok: false, reason: "docker run image must be pinned by @sha256: digest" };
+  return { ok: true };
+}
+
 // ---- execution logic ----
 function runCmd(argv, timeoutMs) {
   return new Promise((resolve) => {
@@ -205,6 +240,14 @@ function runCmd(argv, timeoutMs) {
     if (!bin || !ALLOWED_BINS.has(bin)) {
       resolve({ ok: false, code: -1, out: "", err: `Command not allowed: ${bin}` });
       return;
+    }
+    if (bin === "docker") {
+      const dv = validateDockerArgv(argv);
+      if (!dv.ok) {
+        audit({ event: "docker-rejected", argv, reason: dv.reason });
+        resolve({ ok: false, code: -1, out: "", err: `Docker command not allowed: ${dv.reason}` });
+        return;
+      }
     }
     execFile(bin, argv.slice(1), { timeout: timeoutMs || 60000, windowsHide: true, shell: false, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
       resolve({ ok: !err, code: err && typeof err.code === "number" ? err.code : err ? 1 : 0, out: String(stdout || ""), err: String(stderr || (err && err.message) || "") });
@@ -262,20 +305,34 @@ async function linkQr(task, send) {
 // so a swapped binary never runs. Quick tunnels get a fresh URL each start; the
 // cloud re-verifies reachability itself before claiming anything is connected.
 // Mirror of lib/engine/execute/cloudflared.ts (the tested source of truth). Bump
-// together with that module. Only raw executables are pinned (win exe, linux
-// binaries); macOS ships a .tgz and is intentionally absent until extraction is
-// handled, so unsupported platforms get an honest "not supported" instead of a run.
+// together with that module. Windows/Linux ship raw executables (sha256 pins the
+// binary); macOS ships a .tgz (sha256 pins the whole archive, verified before
+// extraction; innerPath names the cloudflared binary inside). A genuinely
+// unsupported platform gets an honest "not supported" instead of a run.
 const CLOUDFLARED_VERSION = "2026.6.1";
 const CLOUDFLARED_BASE = `https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}`;
 const CLOUDFLARED_TARGETS = {
   "win32/x64": { file: "cloudflared-windows-amd64.exe", sha256: "5253e66f1f493c4e13539749f1aa86fd0c61e3072900fec29a44ba046a6d97e2", filename: "cloudflared.exe" },
   "linux/x64": { file: "cloudflared-linux-amd64", sha256: "5861a10a438fe8ddcfebb3b830f83966cbf193edafce0fe2eeb198fbae1f7a22", filename: "cloudflared" },
   "linux/arm64": { file: "cloudflared-linux-arm64", sha256: "59816ce9b16db71f5bc2a86d59b3632a96c8c3ee934bde2bc8641ee83a6070eb", filename: "cloudflared" },
+  "darwin/x64": { file: "cloudflared-darwin-amd64.tgz", sha256: "d7a66b525fe76820da6e5406611b61e48b40de682368ac00454d9158f085be4b", filename: "cloudflared", archive: "tgz", innerPath: "cloudflared" },
+  "darwin/arm64": { file: "cloudflared-darwin-arm64.tgz", sha256: "f6d4c439c6c782b83264951d327989ce5e23373acc5942b872411601fedb020d", filename: "cloudflared", archive: "tgz", innerPath: "cloudflared" },
 };
 function cloudflaredTarget() {
   const t = CLOUDFLARED_TARGETS[`${process.platform}/${process.arch}`];
   if (!t) return null;
-  return { url: `${CLOUDFLARED_BASE}/${t.file}`, sha256: t.sha256, bin: path.join(AGENT_DIR, "bin", t.filename) };
+  const archive = t.archive || "none";
+  return {
+    url: `${CLOUDFLARED_BASE}/${t.file}`,
+    sha256: t.sha256,
+    archive,
+    innerPath: t.innerPath,
+    bin: path.join(AGENT_DIR, "bin", t.filename),
+    // For archives, keep the pin-verified .tgz on disk as the source of truth; the
+    // runnable binary is always (re)extracted from it, so what runs is always
+    // derived from a hash-pinned archive.
+    archivePath: archive === "tgz" ? path.join(AGENT_DIR, "bin", t.file) : null,
+  };
 }
 let tunnelProc = null;
 let tunnelUrl = null;
@@ -284,10 +341,61 @@ function sha256File(p) {
   try { return createHash("sha256").update(readFileSync(p)).digest("hex"); } catch (_) { return ""; }
 }
 
+// Extract a single named member from a gzipped tar, in pure Node (the agent never
+// spawns a non-bundled binary like system `tar`). ustar/gnu layout: 512-byte
+// header blocks (name at 0, octal size at 124, type at 156) each followed by the
+// file data padded up to 512. Returns the member's bytes, or null if absent.
+function extractTgzMember(tgzBuf, innerName) {
+  const tar = zlib.gunzipSync(tgzBuf);
+  let off = 0;
+  while (off + 512 <= tar.length) {
+    const header = tar.subarray(off, off + 512);
+    // Two consecutive zero blocks mark end of archive.
+    if (header.every((b) => b === 0)) break;
+    const name = header.subarray(0, 100).toString("utf8").replace(/\0.*$/, "");
+    const sizeStr = header.subarray(124, 136).toString("utf8").replace(/\0.*$/, "").trim();
+    const size = parseInt(sizeStr, 8) || 0;
+    const type = String.fromCharCode(header[156]);
+    const dataStart = off + 512;
+    if ((type === "0" || type === "\0") && (name === innerName || path.basename(name) === innerName)) {
+      return tar.subarray(dataStart, dataStart + size);
+    }
+    off = dataStart + Math.ceil(size / 512) * 512;
+  }
+  return null;
+}
+
+// Materialize the runnable cloudflared binary at t.bin from a pin-verified archive
+// (or, for raw targets, no-op). Returns true on success.
+function extractCloudflared(t) {
+  try {
+    const inner = extractTgzMember(readFileSync(t.archivePath), t.innerPath);
+    if (!inner) return false;
+    const tmp = t.bin + ".tmp";
+    writeFileSync(tmp, inner);
+    if (!IS_WIN) { try { require("fs").chmodSync(tmp, 0o755); } catch (_) {} }
+    renameSync(tmp, t.bin);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+// A cloudflared binary is trusted to run only if it derives from the pinned hash:
+// for raw targets the binary itself must hash to the pin; for archives the on-disk
+// .tgz must hash to the pin (and the binary is re-extracted from it).
+function cloudflaredVerified(t) {
+  return t.archive === "tgz" ? sha256File(t.archivePath) === t.sha256 : sha256File(t.bin) === t.sha256;
+}
+
 async function ensureCloudflared() {
   const t = cloudflaredTarget();
   if (!t) return { ok: false, detail: `Tunnel auto-setup is not supported on ${process.platform}/${process.arch} yet.` };
-  if (sha256File(t.bin) === t.sha256) return { ok: true };
+  // Already have the pin-verified artifact: for archives, (re)extract before use.
+  if (cloudflaredVerified(t)) {
+    if (t.archive === "tgz" && !extractCloudflared(t)) return { ok: false, detail: "cloudflared archive could not be extracted." };
+    return { ok: true };
+  }
   try {
     mkdirSync(path.dirname(t.bin), { recursive: true });
     const r = await fetch(t.url, { signal: AbortSignal.timeout(180000), redirect: "follow" });
@@ -297,6 +405,14 @@ async function ensureCloudflared() {
     if (got !== t.sha256) {
       audit({ event: "tunnel-hash-mismatch", got, platform: `${process.platform}/${process.arch}` });
       return { ok: false, detail: "cloudflared hash mismatch; refusing to run it." };
+    }
+    if (t.archive === "tgz") {
+      // Persist the verified archive, then extract the binary from it.
+      const atmp = t.archivePath + ".tmp";
+      writeFileSync(atmp, buf);
+      renameSync(atmp, t.archivePath);
+      if (!extractCloudflared(t)) return { ok: false, detail: "cloudflared archive could not be extracted." };
+      return { ok: true };
     }
     const tmp = t.bin + ".tmp";
     writeFileSync(tmp, buf);
@@ -312,8 +428,10 @@ function startTunnel(port, timeoutMs) {
   return new Promise((resolve) => {
     if (tunnelProc && tunnelUrl) { resolve({ ok: true, url: tunnelUrl }); return; }
     const t = cloudflaredTarget();
-    // Re-verify the binary hash at spawn time, every time.
-    if (!t || sha256File(t.bin) !== t.sha256) {
+    // Re-verify the pinned artifact at spawn time, every time. For archives, that is
+    // the .tgz; re-extract the binary from it so what we spawn is always fresh from
+    // a pin-verified archive.
+    if (!t || !cloudflaredVerified(t) || (t.archive === "tgz" && !extractCloudflared(t))) {
       resolve({ ok: false, detail: "cloudflared binary failed its hash check." });
       return;
     }
@@ -564,12 +682,25 @@ function createSession(socket) {
   socket.on("close", () => { aborted = true; });
 }
 
+// The agent binds 127.0.0.1 only, but a malicious page can still reach it via
+// DNS-rebinding (a hostname it controls, re-resolved to 127.0.0.1). The Host header
+// in a rebinding request is the attacker's domain, not localhost, so pinning Host to
+// loopback closes that hole on top of the Origin allowlist. See DECISIONS.md
+// (WS agent access control) for why a secret token cannot additionally defend
+// against a same-user local process, and why the Ed25519 plan signature is the real
+// boundary for privileged actions.
+function hostAllowed(req) {
+  const host = String(req.headers["host"] || "");
+  const h = host.split(":")[0];
+  return h === "127.0.0.1" || h === "localhost" || h === "[::1]" || h === "::1";
+}
+
 // ---- HTTP server: PNA preflight + WebSocket upgrade ----
 const server = http.createServer((req, res) => {
   const origin = req.headers["origin"] || "";
   if (req.method === "OPTIONS") {
     res.writeHead(200, {
-      "Access-Control-Allow-Origin": ALLOWED_ORIGINS.has(origin) ? origin : "null",
+      "Access-Control-Allow-Origin": ALLOWED_ORIGINS.has(origin) && hostAllowed(req) ? origin : "null",
       "Access-Control-Allow-Private-Network": "true",
       "Access-Control-Allow-Methods": "GET",
       "Access-Control-Max-Age": "86400",
@@ -583,7 +714,8 @@ const server = http.createServer((req, res) => {
 
 server.on("upgrade", (req, socket) => {
   const origin = req.headers["origin"] || "";
-  if (!ALLOWED_ORIGINS.has(origin)) {
+  if (!ALLOWED_ORIGINS.has(origin) || !hostAllowed(req)) {
+    audit({ event: "ws-reject", origin, host: req.headers["host"] || "" });
     socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
     socket.destroy();
     return;

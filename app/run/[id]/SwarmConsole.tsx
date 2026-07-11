@@ -1192,13 +1192,20 @@ function HostedConnectorCard({
 
       {!qr ? (
         <>
-          <label className="flex items-start gap-2 mb-3 cursor-pointer text-[0.72rem]" style={{ color: "var(--color-ink-soft)" }}>
+          <label className="flex items-start gap-2 mb-2 cursor-pointer text-[0.72rem]" style={{ color: "var(--color-ink-soft)" }}>
             <input type="checkbox" checked={consented} onChange={(e) => setConsented(e.target.checked)} className="mt-0.5 shrink-0" />
             <span>
               I understand NodeWorm will link a device to my {integration.appName} account through a bridge it hosts,
               and can read and send on my account for the actions I connect.
             </span>
           </label>
+          {/* Honest disclosure: the hosted bridge is currently a single shared
+              instance, not a per-user container. Documented in DECISIONS.md. */}
+          <p className="text-[0.66rem] mb-3 rounded p-2 leading-snug" style={{ background: "var(--color-paper-2)", color: "var(--color-muted)", border: "1px solid var(--color-line-2)" }}>
+            Heads up: this bridge is a single shared NodeWorm-hosted instance today, not a private per-user one. Your
+            linked number is held encrypted, but it runs on shared infrastructure. Prefer to self-host? Point NodeWorm at
+            your own bridge instead.
+          </p>
           <button onClick={start} disabled={busy || !consented} className="btn btn-signal text-sm w-full justify-center">
             {busy ? "Starting…" : `Link ${integration.appName} (scan one QR)`}
           </button>
