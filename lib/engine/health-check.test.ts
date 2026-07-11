@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Integration } from "./types";
 
 // Mock the I/O boundaries so the wiring (fold + auto-repair trigger) is deterministic.
-const getVaultConnector = vi.fn();
-const verifyConnector = vi.fn();
-const generateForIntegration = vi.fn(async () => ({}));
+const getVaultConnector = vi.fn((..._a: unknown[]) => Promise.resolve(undefined as unknown));
+const verifyConnector = vi.fn((..._a: unknown[]) => Promise.resolve(undefined as unknown));
+const generateForIntegration = vi.fn((..._a: unknown[]) => Promise.resolve({} as unknown));
 
 vi.mock("./vault", () => ({ getVaultConnector: (...a: unknown[]) => getVaultConnector(...a) }));
 vi.mock("./connector", () => ({ verifyConnector: (...a: unknown[]) => verifyConnector(...a) }));

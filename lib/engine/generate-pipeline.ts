@@ -8,7 +8,9 @@ import { recompute } from "./orchestrate";
 import { packBundle, shouldPack } from "./bundle-store";
 import { apisGuruSpecUrl } from "./intel/apisguru";
 import { normalizeCapture } from "./capture";
-import type { GeneratedFile, Integration, OpenApiOp } from "./types";
+import { computeReuseKey } from "./connector-registry";
+import { getRegisteredBundle, putRegisteredBundle } from "../store";
+import type { GeneratedBundle, GeneratedFile, Integration, OpenApiOp } from "./types";
 
 // Unwrap a GraphQL introspection type ref down to its named type + kind.
 function namedType(t: unknown): { name?: string; kind?: string } {
@@ -133,12 +135,23 @@ export interface GenerateResult {
   connectorName: string;
   apiBase?: string;
   openApiOps: number;
-  specSource: "probe" | "apis.guru" | "har" | "none";
+  specSource: "probe" | "apis.guru" | "har" | "none" | "reused";
   graphqlTools: number;
   packed: boolean;
   files: GeneratedFile[];
   deploySteps: string[];
   status: string;
+  // True when this bundle was reused from the cross-user registry (zero generation).
+  reused?: boolean;
+}
+
+// Store the (possibly packed) bundle on the record and recompute the report. Shared
+// by the reuse path and the fresh-generation path so both persist identically.
+function applyBundle(it: Integration, bundle: GeneratedBundle): GeneratedFile[] {
+  const files = bundle.files;
+  it.generated = shouldPack(files) ? { ...bundle, files: [], packed: packBundle(files) } : bundle;
+  recompute(it);
+  return files;
 }
 
 export class GenerateError extends Error {}
@@ -152,6 +165,32 @@ export async function generateForIntegration(
 ): Promise<GenerateResult> {
   if (!it.discovery || !it.wire) {
     throw new GenerateError("Run the pipeline first: generation needs the discovered surface.");
+  }
+
+  // Cross-user reuse: if this exact surface was already generated (by anyone), reuse
+  // the code and skip all the spec fetching + generation. The user's credentials are
+  // never involved here (they live only in their own vault); only the code is shared.
+  // A raw HAR override (body.har) is an explicit "regenerate from this", so skip reuse.
+  const reuseKey = body.har ? null : computeReuseKey(it);
+  if (reuseKey) {
+    const hit = await getRegisteredBundle(reuseKey);
+    if (hit) {
+      const files = applyBundle(it, hit);
+      return {
+        ok: true,
+        kind: hit.kind,
+        connectorName: hit.connectorName,
+        apiBase: hit.apiBase,
+        openApiOps: 0,
+        specSource: "reused",
+        graphqlTools: 0,
+        packed: Boolean(it.generated?.packed),
+        files,
+        deploySteps: hit.deploySteps,
+        status: it.status,
+        reused: true,
+      };
+    }
   }
 
   // OpenAPI source: the app's own discovered spec first; else fall back to the real
@@ -187,9 +226,10 @@ export async function generateForIntegration(
       ? { ...it.discovery, hasPublicApi: true, apiType: "rest" as const }
       : it.discovery;
   const bundle = generateBundle(genDiscovery, it.wire, ops, gqlFields, apiBase, harResult.authHeader);
-  const files = bundle.files;
-  it.generated = shouldPack(files) ? { ...bundle, files: [], packed: packBundle(files) } : bundle;
-  recompute(it);
+  const files = applyBundle(it, bundle);
+  // Register this fresh bundle (files intact) so the next user of the same surface
+  // reuses it. Best-effort: a registry write never blocks the generation result.
+  if (reuseKey) await putRegisteredBundle(reuseKey, it.appName.trim().toLowerCase(), specSource, bundle).catch(() => {});
 
   return {
     ok: true,
@@ -199,7 +239,7 @@ export async function generateForIntegration(
     openApiOps: ops.length,
     specSource,
     graphqlTools: gqlFields.length,
-    packed: Boolean(it.generated.packed),
+    packed: Boolean(it.generated?.packed),
     files,
     deploySteps: bundle.deploySteps,
     status: it.status,

@@ -47,6 +47,13 @@ async function ensureSchema(): Promise<void> {
       expires bigint NOT NULL,
       data jsonb NOT NULL
     )`;
+    await sql`CREATE TABLE IF NOT EXISTS connector_registry (
+      key text PRIMARY KEY,
+      app_slug text NOT NULL,
+      spec_source text NOT NULL,
+      bundle jsonb NOT NULL,
+      created_at bigint NOT NULL
+    )`;
   })();
   await schemaInit;
 }
@@ -326,6 +333,28 @@ export const persistentCache: CacheBackend<unknown> = {
     }
   },
 };
+
+// ---- Connector reuse registry (cross-user shared generated bundles) -------
+// Keyed by the surface hash (see connector-registry.computeReuseKey). Stores the
+// generated bundle so the second user of an app skips generation. Neon-only: without
+// a DB, reuse degrades to normal generation (get returns null, put no-ops).
+
+import type { GeneratedBundle } from "./engine/types";
+
+export async function getRegisteredBundle(key: string): Promise<GeneratedBundle | null> {
+  if (!sql) return null;
+  await ensureSchema();
+  const rows = (await sql`SELECT bundle FROM connector_registry WHERE key = ${key} LIMIT 1`) as Array<{ bundle: GeneratedBundle }>;
+  return rows[0]?.bundle ?? null;
+}
+
+export async function putRegisteredBundle(key: string, appSlug: string, specSource: string, bundle: GeneratedBundle): Promise<void> {
+  if (!sql) return;
+  await ensureSchema();
+  await sql`INSERT INTO connector_registry (key, app_slug, spec_source, bundle, created_at)
+    VALUES (${key}, ${appSlug}, ${specSource}, ${JSON.stringify(bundle)}::jsonb, ${Date.now()})
+    ON CONFLICT (key) DO NOTHING`;
+}
 
 function shortId(): string {
   return globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 10);
