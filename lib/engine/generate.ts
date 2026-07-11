@@ -17,8 +17,17 @@ function slugName(app: string): string {
   return app.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
-function toolSlug(s: string): string {
+export function toolSlug(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60);
+}
+
+// Optional refined tool descriptions, keyed by the emitted tool name. Threaded from
+// the LLM refinement pass (refine.ts); every value has already passed the snapshot
+// gate, so a lookup miss simply falls back to the built-in default description.
+export type DescMap = Record<string, string> | undefined;
+function desc(map: DescMap, name: string, fallback: string): string {
+  const r = map?.[name];
+  return typeof r === "string" && r.length > 0 ? r : fallback;
 }
 
 // The real API origin the generated connector will call, best-evidence-first:
@@ -165,7 +174,7 @@ export interface GraphqlField {
   args: { name: string; type: string; scalar: boolean }[];
 }
 
-function mcpTools(d: Discovery, w: WireConfig, ops: OpenApiOp[], gqlFields: GraphqlField[]): string {
+function mcpTools(d: Discovery, w: WireConfig, ops: OpenApiOp[], gqlFields: GraphqlField[], descriptions?: DescMap): string {
   const lines: string[] = [];
 
   lines.push(
@@ -259,7 +268,7 @@ function mcpTools(d: Discovery, w: WireConfig, ops: OpenApiOp[], gqlFields: Grap
     lines.push(
       `server.tool(`,
       `  ${JSON.stringify(toolSlug(op.name))},`,
-      `  ${JSON.stringify(`${op.summary ?? `${op.method.toUpperCase()} ${op.path}`} (from ${d.appName}'s own OpenAPI spec)`)},`,
+      `  ${JSON.stringify(desc(descriptions, toolSlug(op.name), `${op.summary ?? `${op.method.toUpperCase()} ${op.path}`} (from ${d.appName}'s own OpenAPI spec)`))},`,
       `  {`,
       ...schema,
       `  },`,
@@ -276,7 +285,7 @@ function mcpTools(d: Discovery, w: WireConfig, ops: OpenApiOp[], gqlFields: Grap
       lines.push(
         `server.tool(`,
         `  ${JSON.stringify(`list_${plural}`)},`,
-        `  ${JSON.stringify(`List ${en} records. Uses the conventional path /${plural}; override with ENTITY_PATH_${plural.toUpperCase()} if ${d.appName}'s docs differ.`)},`,
+        `  ${JSON.stringify(desc(descriptions, `list_${plural}`, `List ${en} records. Uses the conventional path /${plural}; override with ENTITY_PATH_${plural.toUpperCase()} if ${d.appName}'s docs differ.`))},`,
         `  { query: z.record(z.string()).optional() },`,
         `  async ({ query }) => out(await call("GET", process.env[${JSON.stringify(`ENTITY_PATH_${plural.toUpperCase()}`)}] ?? ${JSON.stringify(`/${plural}`)}, undefined, query)),`,
         `);`,
@@ -373,7 +382,7 @@ function readme(d: Discovery, kind: "mcp" | "scraper", name: string, apiBase?: s
   ].join("\n");
 }
 
-export function generateBundle(d: Discovery, w: WireConfig, ops: OpenApiOp[] = [], gqlFields: GraphqlField[] = [], apiBaseOverride?: string, authHeader?: string): GeneratedBundle {
+export function generateBundle(d: Discovery, w: WireConfig, ops: OpenApiOp[] = [], gqlFields: GraphqlField[] = [], apiBaseOverride?: string, authHeader?: string, descriptions?: DescMap): GeneratedBundle {
   const kind: "mcp" | "scraper" = d.hasPublicApi ? "mcp" : "scraper";
   const name = `${slugName(d.appName)}-${kind === "mcp" ? "mcp" : "scraper"}`;
   // A spec-declared server (e.g. from APIs.guru) is authoritative over a guess.
@@ -381,7 +390,7 @@ export function generateBundle(d: Discovery, w: WireConfig, ops: OpenApiOp[] = [
 
   const src =
     kind === "mcp"
-      ? serverPrelude(d.appName, apiBase, authHeader) + mcpTools(d, w, ops, gqlFields) + SERVER_MAIN
+      ? serverPrelude(d.appName, apiBase, authHeader) + mcpTools(d, w, ops, gqlFields, descriptions) + SERVER_MAIN
       : SCRAPER_IMPORTS + serverPrelude(d.appName, apiBase, authHeader) + scraperTools(d) + SERVER_MAIN;
 
   const files: GeneratedFile[] = [

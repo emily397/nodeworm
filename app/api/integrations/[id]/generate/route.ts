@@ -12,7 +12,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const it = await getOwnedIntegration(req, id);
   if (!it) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const body = (await req.json().catch(() => ({}))) as { har?: string; capturedRequests?: unknown };
+  const body = (await req.json().catch(() => ({}))) as { har?: string; capturedRequests?: unknown; refine?: boolean };
   try {
     const result = await generateForIntegration(it, body);
     await saveIntegration(it);

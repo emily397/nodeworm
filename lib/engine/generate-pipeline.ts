@@ -9,6 +9,7 @@ import { packBundle, shouldPack } from "./bundle-store";
 import { apisGuruSpecUrl } from "./intel/apisguru";
 import { normalizeCapture } from "./capture";
 import { computeReuseKey } from "./connector-registry";
+import { buildManifest, refineToolDescriptions } from "./refine";
 import { getRegisteredBundle, putRegisteredBundle } from "../store";
 import type { GeneratedBundle, GeneratedFile, Integration, OpenApiOp } from "./types";
 
@@ -161,7 +162,7 @@ export class GenerateError extends Error {}
 // recomputing the report. Throws GenerateError when the surface isn't ready.
 export async function generateForIntegration(
   it: Integration,
-  body: { har?: string; capturedRequests?: unknown } = {},
+  body: { har?: string; capturedRequests?: unknown; refine?: boolean } = {},
 ): Promise<GenerateResult> {
   if (!it.discovery || !it.wire) {
     throw new GenerateError("Run the pipeline first: generation needs the discovered surface.");
@@ -170,8 +171,8 @@ export async function generateForIntegration(
   // Cross-user reuse: if this exact surface was already generated (by anyone), reuse
   // the code and skip all the spec fetching + generation. The user's credentials are
   // never involved here (they live only in their own vault); only the code is shared.
-  // A raw HAR override (body.har) is an explicit "regenerate from this", so skip reuse.
-  const reuseKey = body.har ? null : computeReuseKey(it);
+  // A raw HAR override or an explicit refine request is a "regenerate", so skip reuse.
+  const reuseKey = body.har || body.refine ? null : computeReuseKey(it);
   if (reuseKey) {
     const hit = await getRegisteredBundle(reuseKey);
     if (hit) {
@@ -225,7 +226,12 @@ export async function generateForIntegration(
     harResult.ops.length && !it.discovery.hasPublicApi
       ? { ...it.discovery, hasPublicApi: true, apiType: "rest" as const }
       : it.discovery;
-  const bundle = generateBundle(genDiscovery, it.wire, ops, gqlFields, apiBase, harResult.authHeader);
+  // Optional LLM refinement of tool descriptions (opt-in; off by default so the
+  // flagship loop stays fast). The snapshot gate in refine.ts guarantees only
+  // description text can change, never the tool set, so a bad LLM reply can't ship.
+  const descriptions = body.refine ? await refineToolDescriptions(buildManifest(genDiscovery, ops, gqlFields)) : undefined;
+
+  const bundle = generateBundle(genDiscovery, it.wire, ops, gqlFields, apiBase, harResult.authHeader, descriptions);
   const files = applyBundle(it, bundle);
   // Register this fresh bundle (files intact) so the next user of the same surface
   // reuses it. Best-effort: a registry write never blocks the generation result.
