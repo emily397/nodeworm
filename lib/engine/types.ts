@@ -1,6 +1,8 @@
 // NodeWorm - Autonomous Bidirectional Integration Engine
 // Core type system shared by the engine, store, API and UI.
 
+import type { AutobuildState } from "./autobuild";
+
 export type AuthType = "oauth2" | "apikey" | "none" | "browser" | "unknown";
 
 export type IntegrationPath =
@@ -451,6 +453,9 @@ export interface Integration {
   // Network traffic auto-captured from the managed session (CDP) or the Helper
   // extension, fed to the generator to rebuild a typed connector from real calls.
   capturedRequests?: unknown;
+  // Per-step status of the autonomy loop (capture -> generate) so the client can
+  // show honest live progress and the loop is resumable. Written by /autobuild.
+  autobuild?: AutobuildState;
 }
 
 // ---- Generated connector (generated-mcp / generated-scraper) ---------------

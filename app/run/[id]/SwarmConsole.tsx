@@ -15,6 +15,7 @@ import type {
   TelemetryLine,
   WireConfig,
 } from "@/lib/engine/types";
+import type { AutobuildState, AutobuildStep, AutobuildStepKey } from "@/lib/engine/autobuild";
 import { StatusChip } from "@/app/components/ui";
 import { PHASE_DOT } from "@/app/components/status";
 import { ReelItIn } from "@/app/components/ReelItIn";
@@ -1560,6 +1561,76 @@ function ResearchedMethodCard({
 // cloudflared tunnel (the Agent) so the cloud can verify one real read. Honest:
 // "generated, not deployed" until that read succeeds.
 type GenFile = { path: string; content: string };
+// The autonomy loop's two server-autonomous steps, in order, with human labels.
+const AUTOBUILD_ORDER: AutobuildStepKey[] = ["capture", "generate"];
+const AUTOBUILD_LABELS: Record<AutobuildStepKey, string> = {
+  capture: "capture the real traffic",
+  generate: "generate the typed connector",
+};
+
+// Status -> dot colour + glyph. running pulses amber, ok settles to the live lime,
+// skipped is muted, failed is berry. Pending (not reached yet) is a hollow line dot.
+function autobuildVisual(status: AutobuildStep["status"] | "pending"): { color: string; pulse: boolean; glyph: string } {
+  switch (status) {
+    case "running":
+      return { color: "var(--color-amber)", pulse: true, glyph: "" };
+    case "ok":
+      return { color: "var(--color-live)", pulse: false, glyph: "✓" };
+    case "skipped":
+      return { color: "var(--color-muted)", pulse: false, glyph: "·" };
+    case "failed":
+      return { color: "var(--color-berry)", pulse: false, glyph: "!" };
+    default:
+      return { color: "var(--color-line-2)", pulse: false, glyph: "" };
+  }
+}
+
+// Live per-step progress for the autonomy loop, rendered on the dark telemetry panel
+// so it reads as the machine working. Backed by the persisted autobuild state, so it
+// shows the true point reached, never an optimistic guess.
+function AutobuildProgress({ state }: { state: AutobuildState | null }) {
+  return (
+    <div className="rounded-md p-3 space-y-2.5" style={{ background: "#1b1812", border: "1px solid #2c2820" }}>
+      {AUTOBUILD_ORDER.map((key, i) => {
+        const step = state?.steps.find((s) => s.key === key);
+        const status: AutobuildStep["status"] | "pending" = step?.status ?? "pending";
+        const v = autobuildVisual(status);
+        return (
+          <div key={key} className="flex items-start gap-2.5">
+            <span className="mt-[3px] inline-flex" style={{ width: 9, height: 9 }}>
+              <span className={`dot ${v.pulse ? "pulse-dot" : ""}`} style={{ width: 9, height: 9, background: v.color }} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-2">
+                <span
+                  className="font-mono text-[0.58rem] uppercase tracking-wider"
+                  style={{ color: status === "pending" ? "#7d756a" : "#d8cfbe" }}
+                >
+                  {i + 1}. {AUTOBUILD_LABELS[key]}
+                </span>
+                {v.glyph && (
+                  <span className="font-mono text-[0.62rem]" style={{ color: v.color }}>
+                    {v.glyph}
+                  </span>
+                )}
+              </div>
+              {step?.detail ? (
+                <p className="text-[0.68rem] mt-0.5 leading-snug" style={{ color: status === "failed" ? "var(--color-berry)" : "#b8b0a2" }}>
+                  {step.detail}
+                </p>
+              ) : status === "running" ? (
+                <p className="text-[0.68rem] mt-0.5" style={{ color: "#8b8071" }}>
+                  working…
+                </p>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function GeneratedConnectorCard({ integration }: { integration: Integration }) {
   const isScraper = integration.report?.connectMethod === "generated-scraper";
   const [files, setFiles] = useState<GenFile[] | null>(integration.generated?.files ?? null);
@@ -1573,6 +1644,50 @@ function GeneratedConnectorCard({ integration }: { integration: Integration }) {
   const [showTunnel, setShowTunnel] = useState(false);
   const [buildCwd, setBuildCwd] = useState("");
   const [showBuild, setShowBuild] = useState(false);
+  const [loopState, setLoopState] = useState<AutobuildState | null>(integration.autobuild ?? null);
+  const [looping, setLooping] = useState(false);
+  const loopPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => () => void (loopPollRef.current && clearInterval(loopPollRef.current)), []);
+
+  // The flagship one-click: run the server-autonomous loop (capture the live
+  // session's real traffic, then generate a typed connector from it). While it runs
+  // we poll the record's persisted per-step status for honest live progress; on
+  // success we pull the generated bundle into the download/build view below.
+  async function autobuild() {
+    if (busy || looping) return;
+    setLooping(true);
+    setBusy(true);
+    setMsg(null);
+    setLoopState({ startedAt: Date.now(), updatedAt: Date.now(), steps: [], done: false, ok: true });
+    loopPollRef.current = setInterval(async () => {
+      try {
+        const d = await fetch(`/api/integrations/${integration.id}`).then((r) => r.json());
+        if (d.integration?.autobuild) setLoopState(d.integration.autobuild as AutobuildState);
+      } catch {
+        // transient poll failure; the POST result is the source of truth
+      }
+    }, 1500);
+    try {
+      const data = await fetch(`/api/integrations/${integration.id}/autobuild`, { method: "POST" }).then((r) => r.json());
+      if (loopPollRef.current) clearInterval(loopPollRef.current);
+      if (data.autobuild) setLoopState(data.autobuild as AutobuildState);
+      if (data.ok && data.generated) {
+        const g = await fetch(`/api/integrations/${integration.id}/generate`).then((r) => r.json());
+        if (g.ok) {
+          setFiles(g.files as GenFile[]);
+          setMeta({ apiBase: g.apiBase, connectorName: g.connectorName });
+        }
+      } else if (!data.ok) {
+        const failed = (data.autobuild?.steps ?? []).find((s: AutobuildStep) => s.status === "failed");
+        setMsg(failed?.detail ?? "The autonomy loop stopped. See the steps above.");
+      }
+    } catch {
+      if (loopPollRef.current) clearInterval(loopPollRef.current);
+      setMsg("The autonomy loop could not run.");
+    }
+    setLooping(false);
+    setBusy(false);
+  }
 
   async function generate() {
     if (busy) return;
@@ -1628,9 +1743,24 @@ function GeneratedConnectorCard({ integration }: { integration: Integration }) {
       </p>
 
       {!files ? (
-        <button onClick={generate} disabled={busy} className="btn btn-signal text-sm w-full justify-center">
-          {busy ? "Generating…" : "Generate the connector"}
-        </button>
+        <div className="space-y-2.5">
+          {/* Flagship one-click: capture the live session's real traffic, then build
+              the typed connector from it, with honest live per-step progress. */}
+          <button onClick={autobuild} disabled={busy} className="btn btn-signal text-sm w-full justify-center">
+            {looping ? "Running the autonomy loop…" : "⚡ Capture & build automatically"}
+          </button>
+          {(looping || loopState) && <AutobuildProgress state={loopState} />}
+          <div className="flex items-center gap-2">
+            <span className="h-px flex-1" style={{ background: "var(--color-line-2)" }} />
+            <span className="font-mono text-[0.54rem] uppercase tracking-wider" style={{ color: "var(--color-muted)" }}>
+              or step it manually
+            </span>
+            <span className="h-px flex-1" style={{ background: "var(--color-line-2)" }} />
+          </div>
+          <button onClick={generate} disabled={busy} className="btn btn-ink text-sm w-full justify-center">
+            {busy && !looping ? "Generating…" : "Generate the connector"}
+          </button>
+        </div>
       ) : (
         <div className="space-y-3">
           {meta?.apiBase && (
