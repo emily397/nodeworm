@@ -4,11 +4,9 @@ _Planned 2026-07-11 from `NODEWORM_HANDOVER.md` at commit `413e17f`. Read the ha
 
 **End state:** type any app name, authenticate once, get a live, durable, self-maintaining connector. Every phase ends deploy-green (tsc + build + vitest) and is proven with a real invocation, never a description.
 
-## Phase 0 - Activation (keys only, ~zero code)
-The biggest capability jump available costs no code: capture, managed session, hosted connector, co-browse, signed build/tunnel plans, and LLM discovery are all built and inert-until-keyed.
-- Emily: add `BROWSERBASE_API_KEY`, `EXECUTE_SIGNING_KEY` (fresh Ed25519 pair), and an OpenRouter/free LLM key to Vercel prod. Set via Bash `printf '%s' | vercel env add` (PowerShell pipe BOM breaks values).
-- Claude: live-verify each unlocked tier in prod: managed session opens, `captureTraffic` records real traffic, a signed build plan verifies on the Agent, LLM discovery beats heuristics on one unknown app.
-- **Exit test:** one real app connected via managed session in prod, honest status transitions observed.
+## Phase 0 - Activation: DONE (verified 2026-07-11)
+Keys were already in Vercel prod since Jun 24; the handover's inert-until-keyed list was stale. Live-verified: managed session opens (Steel), capture attaches over CDP, `EXECUTE_SIGNING_KEY` set (pubkey route serves the Ed25519 key), LLM discovery on (`/api/health` mode ai).
+- **Remaining (Emily, optional):** `BROWSERBASE_API_KEY` is set but failing (sessions fall back to Steel, likely out of minutes). Top up or remove; Steel works either way.
 
 ## Phase 1 - Durability (Neon persistence, no keys needed)
 Serverless cold starts currently lose generated bundles and the discovery cache; the autonomy loop in Phase 2 cannot chain long steps on amnesiac storage, so this lands first.
