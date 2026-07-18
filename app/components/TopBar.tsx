@@ -21,6 +21,7 @@ export function TopBar() {
     { href: "/", label: "Launch" },
     { href: "/gallery", label: "Gallery" },
     { href: "/integrations", label: "Integrations" },
+    { href: "/flows", label: "Flows" },
   ];
 
   return (

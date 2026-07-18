@@ -57,6 +57,28 @@ Multi-tenant IDOR fixed (`getOwnedIntegration` across `[id]/**` incl. oauth star
 - Pages: `app/page.tsx` (hero + 5-agent rainbow pipeline + decision tree + gallery teaser), `app/gallery/*` (nodes + worms + go-fish + composer; `lib/catalog.ts` saturated category colors), `app/run/[id]/SwarmConsole.tsx` (the executing pipeline, flowing rail, report panel, all the connect cards incl. GeneratedConnectorCard).
 - **CLAUDE.md rule:** invoke `frontend-design` skill before any UI work. Verify visuals via computed styles + production-CSS grep (preview screenshots TIME OUT on the continuous aurora, a known quirk not a bug; Tailwind v4 dev cache lies, always check `.next/static/chunks/*.css`).
 
+## Flows: the automation layer (Phase 6, `lib/flow/*`)
+The Zapier/Make/n8n-replacement surface on top of the connection engine. A Flow = one trigger
+(webhook / schedule / manual) + ordered steps (`http` as a connection with vault-injected auth,
+`connector` via the vaulted self-hosted/tunneled connector, `ai` over the free-first cascade,
+`filter`, `webhook-out`). Step inputs are templates: `{{trigger.*}}`, `{{steps.<id>.output.*}}`.
+- **Engine (pure, TDD):** `template.ts` (path resolve + raw-type whole placeholders), `run.ts`
+  (executor fold, DI'd effects, bounded outputs, honest failure/filter halting, onTransition
+  persistence like autobuild), `model.ts` (create/redact/patch-sanitize; hook token server-only),
+  `draft.ts` (parseWorkflow plan -> flow draft matched against existing connections,
+  `needsConnections` for unmatched apps).
+- **I/O:** `store.ts` (Neon `flows` + `flow_runs`, file fallback, run cap 100), `effects.ts`
+  (SSRF-guarded via assertConnectorUrl; vault tokens injected server-side), `runtime.ts` (fireFlow).
+- **API:** `/api/flows` (GET list, POST create; `{prompt}` = AI drafting front door with honest
+  clarify/unmappable), `/api/flows/[id]` (owner GET incl. hook URL / PATCH / DELETE), `.../run`
+  (manual), `.../runs`, `.../hook?k=<token>` (public trigger, constant-time compare, challenge
+  echo), `/api/cron/flows` (5-min Vercel cron tick for schedule triggers, CRON_SECRET-gated).
+- **UI:** `/flows` (list + plain-language composer) and `/flows/[id]` (trigger card + copyable
+  hook URL, vertical step rail in the step-color dot language, test bench, run history).
+- Proven E2E locally: AI draft matched Stripe+Notion connections; filter -> ai -> webhook-out run
+  came back `ok` with a real model reply and a real HTTP 200; filtered path halts honestly;
+  challenge echoed; wrong hook token 401.
+
 ## The autonomy loop (Phase 2 flagship, `lib/engine/autobuild.ts`)
 One button, **⚡ Capture & build automatically**, on the run console. `POST /autobuild` runs a dependency-injected orchestrator that chains the server-autonomous steps (capture the live managed session's real traffic -> generate a typed connector) and persists per-step status on `it.autobuild` after every transition: resumable, honest skip/failure per step, live progress. `capture-pipeline.ts` + `generate-pipeline.ts` hold the shared logic so the loop and the manual `/session/capture` + `/generate` routes run identical code (those routes are now thin wrappers). `AutobuildProgress` on `GeneratedConnectorCard` renders the persisted steps in the phase-rail dot language; on success the card flips to the download + Agent build/tunnel view. Build/tunnel/verify stay Agent-driven (they need a local folder), surfaced right after generate.
 

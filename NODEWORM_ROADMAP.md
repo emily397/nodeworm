@@ -42,6 +42,38 @@ What makes the product defensible rather than a builder script. **Exit test MET
 - **Gallery live status badges: DONE.** The integrations list shows each verified connector's rolling health (healthy/drifted/unreachable, drift pulses) from the Phase 4 monitor, with an on-demand re-check. Prod-verified (renders, badge scoped to verified connectors).
 - **SSE/streaming run updates: DEFERRED (deliberate).** The advance loop is a client-driven sequential fetch, not a wasteful poll, and the memoization already delivered the smoothness the exit test asked for. Converting to server-streamed SSE is a lateral transport change with real regression risk on the flagship console and no change to the proven outcome, so it is intentionally not done. Revisit only if a concrete need (very long pipelines, multi-viewer runs) appears. Commits e3b85f1 + 6a7efd7, 139 tests.
 
+## Phase 6 - Flows: the automation layer (Zapier / Make / n8n replacement)
+
+_Planned 2026-07-18. Phases 0-5 built the connection engine (connect ANY app). Phase 6 builds
+the automation product ON TOP of those connections: multi-step workflows with triggers,
+filters, AI steps and real actions, a builder UI, run history. This is the piece that makes
+NodeWorm a category replacement rather than a connector factory._
+
+**Model:** a Flow = one trigger (webhook / schedule / manual) + ordered steps
+(`http` call as a connection, `connector` call via a vaulted self-hosted/tunneled connector,
+`ai` LLM step over the free-first cascade, `filter` condition, `webhook-out`). Step inputs are
+templates over `{{trigger.*}}` and `{{steps.<id>.output.*}}`. Runs are persisted with
+per-step status, bounded outputs, honest failures (no fabricated success, same doctrine).
+
+- **6a Engine core (pure, TDD):** `lib/flow/` types + template resolver + condition eval +
+  executor fold (DI'd effects, persisted transition per step like autobuild) + AI draft mapper
+  (`parseWorkflow` plan -> Flow draft, matching the user's existing connections, honest
+  `needsConnections` for unmatched apps).
+- **6b Persistence + API:** Neon `flows` + `flow_runs` (+ file fallback), owner-scoped CRUD,
+  manual run, public token-gated webhook trigger (constant-time compare, challenge echo,
+  token redacted on reads like inbound), `/api/cron/flows` scheduler tick (CRON_SECRET-gated),
+  `POST /api/flows` with `prompt` = AI drafting front door. All outbound URLs SSRF-guarded via
+  `assertConnectorUrl` (cloud surface). Connection auth injected server-side from the vault
+  (`getVaultTokens` / `getVaultConnector`); tokens never in flow definitions.
+- **6c Builder UI:** `/flows` (list + plain-language composer) and `/flows/[id]` (trigger card
+  with copyable hook URL, vertical step editor in the existing phase-rail dot language, live
+  run panel + history). TopBar nav. Existing vibrant design system (aurora/amber/berry/aqua).
+- **6d Verify + ship:** tsc + build + vitest green, deploy, prod-verified with a real flow run.
+
+**Deferred to a later pass (deliberate):** typed per-app action pickers from
+`wire.outboundTools`, MCP `tools/call` step against generated connectors, polling triggers
+with dedupe cursors, branching/parallel paths, template gallery, team workspaces.
+
 ## Sequencing rationale
 0 unlocks six built tiers for the cost of three env vars. 1 before 2 because the flagship loop needs durable artifacts between serverless invocations. 2 is the product's flagship moment and the demo that sells it. 3 broadens who can run it and retires the honest-open security items. 4 turns a generator into a self-maintaining platform. 5 is a refactor with regression risk, so it goes last on top of frozen behavior.
 
