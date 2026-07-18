@@ -107,6 +107,92 @@ describe("executeFlow", () => {
   });
 });
 
+describe("executeFlow branching + resilience", () => {
+  it("runs every matching branch in order, skips non-matching, and exposes branch step outputs afterwards", async () => {
+    const calls: Array<{ type: string; input: { body?: unknown } }> = [];
+    const f = flow([
+      {
+        id: "route",
+        type: "branch",
+        name: "route by severity",
+        branches: [
+          { id: "b1", name: "critical", condition: { left: "{{trigger.sev}}", op: "eq", right: "critical" }, steps: [{ id: "page", type: "webhook-out", name: "page", url: "https://p.com" }] },
+          { id: "b2", name: "always", steps: [{ id: "log", type: "webhook-out", name: "log", url: "https://l.com", body: '{"sev":"{{trigger.sev}}"}' }] },
+          { id: "b3", name: "low only", condition: { left: "{{trigger.sev}}", op: "eq", right: "low" }, steps: [{ id: "ignore", type: "webhook-out", name: "ignore", url: "https://i.com" }] },
+        ],
+      },
+      { id: "after", type: "webhook-out", name: "after", url: "https://a.com", body: '{"was":"{{steps.log.output.echoed.body.sev}}"}' },
+    ]);
+    const run = await executeFlow(f, { type: "manual", summary: "m", payload: { sev: "critical" } }, okEffects(calls));
+
+    expect(run.status).toBe("ok");
+    const names = run.steps.map((s) => `${s.name}:${s.status}`);
+    expect(names).toEqual(["route by severity:ok", "page:ok", "log:ok", "after:ok"]);
+    expect(run.steps[0].summary).toContain("critical");
+    expect(run.steps[1].branch).toBe("critical");
+    expect(run.steps[2].branch).toBe("always");
+    expect((calls[2].input as { body: { was: string } }).body.was).toBe("critical");
+  });
+
+  it("reports honestly when no branch matches and continues past the branch", async () => {
+    const f = flow([
+      { id: "route", type: "branch", name: "route", branches: [{ id: "b1", name: "never", condition: { left: "{{trigger.x}}", op: "eq", right: "y" }, steps: [{ id: "s", type: "webhook-out", name: "s", url: "https://x.com" }] }] },
+      { id: "after", type: "webhook-out", name: "after", url: "https://a.com" },
+    ]);
+    const run = await executeFlow(f, { type: "manual", summary: "m", payload: {} }, okEffects());
+    expect(run.status).toBe("ok");
+    expect(run.steps[0].summary).toMatch(/no branch matched/i);
+    expect(run.steps.map((s) => s.name)).toEqual(["route", "after"]);
+  });
+
+  it("a filter inside a branch halts only that branch", async () => {
+    const f = flow([
+      {
+        id: "route",
+        type: "branch",
+        name: "route",
+        branches: [
+          { id: "b1", name: "gated", steps: [{ id: "g", type: "filter", name: "gate", condition: { left: "{{trigger.go}}", op: "exists" } }, { id: "x", type: "webhook-out", name: "x", url: "https://x.com" }] },
+          { id: "b2", name: "open", steps: [{ id: "y", type: "webhook-out", name: "y", url: "https://y.com" }] },
+        ],
+      },
+    ]);
+    const run = await executeFlow(f, { type: "manual", summary: "m", payload: {} }, okEffects());
+    expect(run.status).toBe("ok");
+    const byName = Object.fromEntries(run.steps.map((s) => [s.name, s.status]));
+    expect(byName.gate).toBe("filtered");
+    expect(byName.x).toBe("skipped");
+    expect(byName.y).toBe("ok");
+  });
+
+  it("retries a failing effect up to the configured attempts, then succeeds", async () => {
+    let tries = 0;
+    const effects = okEffects();
+    effects.http = async () => {
+      tries++;
+      return tries < 3 ? { ok: false, summary: `boom ${tries}` } : { ok: true, summary: "finally", output: {} };
+    };
+    const f = flow([{ id: "a", type: "http", name: "flaky", url: "https://f.com", retries: 2 }]);
+    const run = await executeFlow(f, { type: "manual", summary: "m", payload: {} }, effects, undefined, { backoffMs: () => 0 });
+    expect(tries).toBe(3);
+    expect(run.status).toBe("ok");
+    expect(run.steps[0].summary).toContain("attempt 3");
+  });
+
+  it("continue-on-error keeps going and lands the run on partial", async () => {
+    const effects = okEffects();
+    effects.http = async () => ({ ok: false, summary: "HTTP 500" });
+    const f = flow([
+      { id: "a", type: "http", name: "best effort", url: "https://f.com", onError: "continue" },
+      { id: "b", type: "webhook-out", name: "still runs", url: "https://y.com" },
+    ]);
+    const run = await executeFlow(f, { type: "manual", summary: "m", payload: {} }, effects);
+    expect(run.steps[0].status).toBe("failed");
+    expect(run.steps[1].status).toBe("ok");
+    expect(run.status).toBe("partial");
+  });
+});
+
 describe("evalCondition", () => {
   const ctx = { trigger: { status: "paid", note: "big spender", amount: 42 } };
   it("supports eq / neq / contains / exists / gt / lt", () => {

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { timeAgo } from "@/app/components/status";
+import { TEMPLATES } from "@/lib/flow/templates";
 import type { Flow } from "@/lib/flow/types";
 import { STEP_COLORS, TRIGGER_LABEL } from "./meta";
 
@@ -43,6 +44,20 @@ export function FlowsHome({ initial }: { initial: Flow[] }) {
       setNotice({ kind: "error", text: "Something broke drafting that. Try again." });
     }
     setBusy(false);
+  }
+
+  async function fromTemplate(id: string) {
+    if (busy) return;
+    setBusy(true);
+    const data = await fetch("/api/flows", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ template: id }),
+    })
+      .then((r) => r.json())
+      .catch(() => null);
+    if (data?.flow) router.push(`/flows/${data.flow.id}`);
+    else setBusy(false);
   }
 
   async function blank() {
@@ -104,6 +119,37 @@ export function FlowsHome({ initial }: { initial: Flow[] }) {
               style={{ color: "var(--color-muted)", border: "1px solid var(--color-line)" }}
             >
               {ex}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div className="kicker mb-4">or start from a template</div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {TEMPLATES.map((t, i) => (
+            <button
+              key={t.id}
+              onClick={() => fromTemplate(t.id)}
+              disabled={busy}
+              className="card p-4 text-left rise transition-transform hover:-translate-y-0.5"
+              style={{ animationDelay: `${i * 40}ms` }}
+            >
+              <div className="font-display font-bold text-[0.95rem] leading-tight mb-1">{t.name}</div>
+              <div className="font-mono text-[0.66rem] mb-2.5" style={{ color: "var(--color-muted)" }}>
+                {t.blurb}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-mono text-[0.6rem] uppercase tracking-wider" style={{ color: "var(--color-muted)" }}>
+                  {TRIGGER_LABEL[t.trigger.type]}
+                </span>
+                <span className="font-mono text-[0.6rem]" style={{ color: "var(--color-line-2)" }}>
+                  →
+                </span>
+                {t.steps.flatMap((s) => [s, ...(s.branches?.flatMap((b) => b.steps) ?? [])]).map((s, j) => (
+                  <span key={j} className="dot" style={{ width: 7, height: 7, background: STEP_COLORS[s.type] }} />
+                ))}
+              </div>
             </button>
           ))}
         </div>

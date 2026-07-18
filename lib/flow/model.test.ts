@@ -77,6 +77,44 @@ describe("applyPatch", () => {
     expect(out.trigger.token).toBe(f.trigger.token);
   });
 
+  it("accepts a branch step, stripping nested branches and capping counts", () => {
+    const f = newFlowRecord("x");
+    const out = applyPatch(f, {
+      steps: [
+        {
+          type: "branch",
+          name: "route",
+          branches: [
+            { name: "critical", condition: { left: "{{trigger.sev}}", op: "eq", right: "critical" }, steps: [{ type: "webhook-out", name: "page", url: "https://p.com" }, { type: "branch", name: "nested evil" }] },
+            ...Array.from({ length: 8 }, (_, i) => ({ name: `b${i}`, steps: Array.from({ length: 15 }, (_, j) => ({ type: "filter", name: `f${j}` })) })),
+          ],
+        },
+      ],
+    });
+    const b = out.steps[0];
+    expect(b.type).toBe("branch");
+    expect(b.branches!.length).toBeLessThanOrEqual(4);
+    expect(b.branches![0].name).toBe("critical");
+    expect(b.branches![0].condition?.op).toBe("eq");
+    expect(b.branches![0].steps.some((s) => s.type === "branch")).toBe(false);
+    expect(b.branches![1].steps.length).toBeLessThanOrEqual(10);
+    expect(b.branches!.every((br) => br.id.length > 0)).toBe(true);
+  });
+
+  it("clamps retries to 0-2 and onError to halt/continue", () => {
+    const f = newFlowRecord("x");
+    const out = applyPatch(f, {
+      steps: [
+        { type: "http", name: "a", retries: 9, onError: "continue" },
+        { type: "http", name: "b", retries: -3, onError: "explode" },
+      ],
+    });
+    expect(out.steps[0].retries).toBe(2);
+    expect(out.steps[0].onError).toBe("continue");
+    expect(out.steps[1].retries).toBeUndefined();
+    expect(out.steps[1].onError).toBeUndefined();
+  });
+
   it("ignores junk patch values without throwing", () => {
     const f = newFlowRecord("x");
     const out = applyPatch(f, { name: 42, trigger: "nope", steps: "nope" });

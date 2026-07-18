@@ -7,10 +7,11 @@ import { timeAgo } from "@/app/components/status";
 import type { Integration } from "@/lib/engine/types";
 import type { FlowAction } from "@/lib/flow/actions";
 import type { McpTool } from "@/lib/flow/mcp";
-import type { ConditionOp, Flow, FlowRun, FlowStep, FlowStepType, FlowTriggerType } from "@/lib/flow/types";
+import type { ConditionOp, Flow, FlowBranch, FlowCondition, FlowRun, FlowStep, FlowStepType, FlowTriggerType } from "@/lib/flow/types";
 import { RUN_COLORS, STEP_BLURBS, STEP_COLORS, STEP_LABELS, TRIGGER_LABEL } from "../meta";
 
-const STEP_TYPES: FlowStepType[] = ["http", "mcp", "connector", "ai", "filter", "webhook-out"];
+const STEP_TYPES: FlowStepType[] = ["http", "mcp", "connector", "ai", "filter", "webhook-out", "branch"];
+const BRANCH_STEP_TYPES: FlowStepType[] = ["http", "mcp", "connector", "ai", "filter", "webhook-out"];
 const OPS: ConditionOp[] = ["eq", "neq", "contains", "exists", "gt", "lt"];
 
 // Per-connection action catalog (real discovered operations + live MCP tools).
@@ -36,6 +37,13 @@ function freshStep(type: FlowStepType): FlowStep {
     name: STEP_LABELS[type],
     method: type === "http" || type === "connector" || type === "webhook-out" ? "POST" : undefined,
     condition: type === "filter" ? { left: "", op: "exists" } : undefined,
+    branches:
+      type === "branch"
+        ? [
+            { id: `b${Date.now().toString(36)}a`, name: "when...", condition: { left: "", op: "eq", right: "" }, steps: [] },
+            { id: `b${Date.now().toString(36)}b`, name: "otherwise", steps: [] },
+          ]
+        : undefined,
   };
 }
 
@@ -82,7 +90,8 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
 
   // Lazily fetch the action catalog for every connection any step references.
   useEffect(() => {
-    const wanted = new Set(flow.steps.map((s) => s.integrationId).filter(Boolean) as string[]);
+    const all = flow.steps.flatMap((s) => [s, ...(s.branches?.flatMap((b) => b.steps) ?? [])]);
+    const wanted = new Set(all.map((s) => s.integrationId).filter(Boolean) as string[]);
     for (const id of wanted) {
       if (catalogs[id]) continue;
       setCatalogs((c) => ({ ...c, [id]: { actions: [], mcpTools: [], source: "loading" } }));
@@ -370,7 +379,7 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
                 index={i}
                 total={flow.steps.length}
                 connectionOptions={connectionOptions}
-                catalog={s.integrationId ? catalogs[s.integrationId] : undefined}
+                catalogs={catalogs}
                 onChange={(p) => patchStep(s.id, p)}
                 onMove={(d) => moveStep(s.id, d)}
                 onRemove={() => {
@@ -470,24 +479,28 @@ function StepCard({
   index,
   total,
   connectionOptions,
-  catalog,
+  catalogs,
   onChange,
   onMove,
   onRemove,
+  insideBranch,
 }: {
   step: FlowStep;
   index: number;
   total: number;
   connectionOptions: React.ReactNode;
-  catalog?: Catalog;
+  catalogs: Record<string, Catalog>;
   onChange: (p: Partial<FlowStep>) => void;
   onMove: (d: -1 | 1) => void;
   onRemove: () => void;
+  insideBranch?: boolean;
 }) {
   const [open, setOpen] = useState(true);
   const color = STEP_COLORS[step.type];
+  const catalog = step.integrationId ? catalogs[step.integrationId] : undefined;
   const usesConnection = step.type === "http" || step.type === "connector" || step.type === "mcp";
   const usesBody = step.type === "http" || step.type === "connector" || step.type === "webhook-out";
+  const isEffect = step.type !== "filter" && step.type !== "branch";
 
   function applyAction(name: string) {
     const a = catalog?.actions.find((x) => x.name === name);
@@ -495,8 +508,12 @@ function StepCard({
     onChange({ name: a.summary || a.name, method: a.method, url: a.url ?? step.url, body: a.bodyTemplate ?? step.body });
   }
 
+  function patchBranch(bid: string, p: Partial<FlowBranch>) {
+    onChange({ branches: (step.branches ?? []).map((b) => (b.id === bid ? { ...b, ...p } : b)) });
+  }
+
   return (
-    <div className="card p-4" style={{ borderColor: `color-mix(in srgb, ${color} 30%, var(--color-line))` }}>
+    <div className={insideBranch ? "card p-3" : "card p-4"} style={{ borderColor: `color-mix(in srgb, ${color} 30%, var(--color-line))` }}>
       <div className="flex items-center gap-3">
         <span className="font-mono text-[0.62rem] uppercase tracking-wider px-2 py-0.5 rounded" style={{ color, border: `1px solid color-mix(in srgb, ${color} 45%, transparent)` }}>
           {STEP_LABELS[step.type]}
@@ -708,6 +725,149 @@ function StepCard({
               </div>
             </>
           )}
+
+          {isEffect && (
+            <div className="flex flex-wrap gap-4 sm:col-span-2">
+              <Field label="retries">
+                <select
+                  value={step.retries ?? 0}
+                  onChange={(e) => onChange({ retries: Number(e.target.value) || undefined })}
+                  className="rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                  style={inputStyle}
+                >
+                  <option value={0}>none</option>
+                  <option value={1}>1 retry</option>
+                  <option value={2}>2 retries</option>
+                </select>
+              </Field>
+              <Field label="on failure">
+                <select
+                  value={step.onError ?? "halt"}
+                  onChange={(e) => onChange({ onError: e.target.value === "continue" ? "continue" : undefined })}
+                  className="rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                  style={inputStyle}
+                >
+                  <option value="halt">stop the run</option>
+                  <option value="continue">continue (run marked partial)</option>
+                </select>
+              </Field>
+            </div>
+          )}
+
+          {step.type === "branch" && (
+            <div className="sm:col-span-2 space-y-3">
+              {(step.branches ?? []).map((b) => (
+                <div key={b.id} className="rounded-xl p-3 space-y-3" style={{ border: "1px dashed var(--color-line-2)" }}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      value={b.name}
+                      onChange={(e) => patchBranch(b.id, { name: e.target.value })}
+                      className="flex-1 min-w-[120px] bg-transparent outline-none font-display font-bold text-sm"
+                      style={{ color: "var(--color-ink)" }}
+                      aria-label="Branch name"
+                    />
+                    <select
+                      value={b.condition ? "when" : "always"}
+                      onChange={(e) =>
+                        patchBranch(b.id, { condition: e.target.value === "when" ? ({ left: "", op: "eq", right: "" } as FlowCondition) : undefined })
+                      }
+                      className="rounded-lg px-2 py-1.5 font-mono text-[0.66rem] outline-none"
+                      style={inputStyle}
+                    >
+                      <option value="always">always runs</option>
+                      <option value="when">only when...</option>
+                    </select>
+                    <button
+                      onClick={() => onChange({ branches: (step.branches ?? []).filter((x) => x.id !== b.id) })}
+                      className="font-mono text-xs px-1.5 py-0.5 rounded"
+                      style={{ color: "var(--color-blocked)" }}
+                      aria-label={`Remove branch ${b.name}`}
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  {b.condition && (
+                    <div className="grid grid-cols-3 gap-2">
+                      <input
+                        value={b.condition.left}
+                        onChange={(e) => patchBranch(b.id, { condition: { ...b.condition!, left: e.target.value } })}
+                        placeholder="{{trigger.severity}}"
+                        className="rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                        style={inputStyle}
+                      />
+                      <select
+                        value={b.condition.op}
+                        onChange={(e) => patchBranch(b.id, { condition: { ...b.condition!, op: e.target.value as ConditionOp } })}
+                        className="rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                        style={inputStyle}
+                      >
+                        {OPS.map((o) => (
+                          <option key={o}>{o}</option>
+                        ))}
+                      </select>
+                      {b.condition.op !== "exists" && (
+                        <input
+                          value={b.condition.right ?? ""}
+                          onChange={(e) => patchBranch(b.id, { condition: { ...b.condition!, right: e.target.value } })}
+                          placeholder="critical"
+                          className="rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                          style={inputStyle}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  <div className="space-y-2 pl-3" style={{ borderLeft: `2px solid color-mix(in srgb, ${STEP_COLORS.branch} 40%, transparent)` }}>
+                    {b.steps.map((inner, ii) => (
+                      <StepCard
+                        key={inner.id}
+                        step={inner}
+                        index={ii}
+                        total={b.steps.length}
+                        connectionOptions={connectionOptions}
+                        catalogs={catalogs}
+                        insideBranch
+                        onChange={(p) => patchBranch(b.id, { steps: b.steps.map((x) => (x.id === inner.id ? { ...x, ...p } : x)) })}
+                        onMove={(d) => {
+                          const j = ii + d;
+                          if (j < 0 || j >= b.steps.length) return;
+                          const steps = [...b.steps];
+                          [steps[ii], steps[j]] = [steps[j], steps[ii]];
+                          patchBranch(b.id, { steps });
+                        }}
+                        onRemove={() => patchBranch(b.id, { steps: b.steps.filter((x) => x.id !== inner.id) })}
+                      />
+                    ))}
+                    <div className="flex flex-wrap gap-1.5">
+                      {BRANCH_STEP_TYPES.map((t) => (
+                        <button
+                          key={t}
+                          onClick={() => patchBranch(b.id, { steps: [...b.steps, freshStep(t)] })}
+                          title={STEP_BLURBS[t]}
+                          className="inline-flex items-center gap-1.5 font-mono text-[0.66rem] px-2 py-1 rounded-lg"
+                          style={{ border: `1px solid color-mix(in srgb, ${STEP_COLORS[t]} 40%, transparent)`, color: "var(--color-muted)" }}
+                        >
+                          <span className="dot" style={{ width: 6, height: 6, background: STEP_COLORS[t] }} />
+                          {STEP_LABELS[t]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {(step.branches ?? []).length < 4 && (
+                <button
+                  onClick={() =>
+                    onChange({ branches: [...(step.branches ?? []), { id: `b${Date.now().toString(36)}${(step.branches ?? []).length}`, name: `branch ${(step.branches ?? []).length + 1}`, steps: [] }] })
+                  }
+                  className="btn btn-ghost text-xs"
+                >
+                  + add branch
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -729,11 +889,12 @@ function RunCard({ run }: { run: FlowRun }) {
       </button>
       {open && (
         <div className="mt-2.5 space-y-1.5 pl-1">
-          {run.steps.map((s) => (
-            <div key={`${run.id}-${s.stepId}`} className="flex items-start gap-2">
+          {run.steps.map((s, si) => (
+            <div key={`${run.id}-${s.stepId}-${si}`} className="flex items-start gap-2" style={s.branch ? { paddingLeft: 14 } : undefined}>
               <span className="dot mt-1" style={{ width: 7, height: 7, background: RUN_COLORS[s.status] }} />
               <div className="min-w-0">
                 <div className="font-mono text-[0.7rem]" style={{ color: "var(--color-ink-soft)" }}>
+                  {s.branch ? <span style={{ color: "var(--color-muted)" }}>{s.branch} / </span> : null}
                   {s.name} <span style={{ color: "var(--color-muted)" }}>· {s.status}</span>
                 </div>
                 {s.summary && (

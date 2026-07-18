@@ -85,11 +85,18 @@ function shortId(): string {
   return globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 10);
 }
 
+export interface ExecOpts {
+  backoffMs?: (attempt: number) => number;
+}
+
+const MAX_EXTRA_RETRIES = 2;
+
 export async function executeFlow(
   flow: Flow,
   fire: TriggerFire,
   effects: StepEffects,
   onTransition?: (run: FlowRun) => Promise<void>,
+  opts?: ExecOpts,
 ): Promise<FlowRun> {
   const run: FlowRun = {
     id: shortId(),
@@ -100,58 +107,111 @@ export async function executeFlow(
     steps: [],
   };
   const ctx: Record<string, unknown> = { trigger: fire.payload, steps: {} };
+  const backoff = opts?.backoffMs ?? ((attempt: number) => attempt * 1000);
   let halted: "failed" | "filtered" | null = null;
+  let anyFailed = false;
 
-  for (const step of flow.steps) {
+  async function transition(): Promise<void> {
+    run.status = halted ?? "running";
+    if (onTransition) await onTransition(run);
+  }
+
+  // Execute one step (recursing into branches) and return the control signal
+  // for the CONTAINING list: "filtered" halts that list, "failed" halts the run.
+  async function runStep(step: FlowStep, branch?: string): Promise<"failed" | "filtered" | null> {
     const startedAt = Date.now();
-    const rec: StepRun = { stepId: step.id, name: step.name, type: step.type, status: "ok", startedAt, finishedAt: startedAt, summary: "" };
+    const rec: StepRun = { stepId: step.id, name: step.name, type: step.type, status: "ok", startedAt, finishedAt: startedAt, summary: "", branch };
 
-    if (halted) {
-      rec.status = "skipped";
-      rec.summary = halted === "failed" ? "skipped: an earlier step failed" : "skipped: filtered out";
-    } else if (step.type === "filter") {
+    if (step.type === "filter") {
       const pass = step.condition ? evalCondition(step.condition, ctx) : true;
-      if (pass) {
-        rec.summary = "condition passed";
-      } else {
-        rec.status = "filtered";
-        rec.summary = "condition not met; run stopped";
-        halted = "filtered";
+      rec.summary = pass ? "condition passed" : branch ? "condition not met; branch stopped" : "condition not met; run stopped";
+      if (!pass) rec.status = "filtered";
+      rec.finishedAt = Date.now();
+      run.steps.push(rec);
+      await transition();
+      return pass ? null : "filtered";
+    }
+
+    if (step.type === "branch") {
+      const matched = (step.branches ?? []).filter((b) => !b.condition || evalCondition(b.condition, ctx));
+      rec.summary = matched.length ? `matched: ${matched.map((b) => b.name).join(", ")}` : "no branch matched; continuing";
+      rec.finishedAt = Date.now();
+      run.steps.push(rec);
+      await transition();
+      for (const b of matched) {
+        for (const inner of b.steps) {
+          const signal = await runStep(inner, b.name);
+          if (signal === "filtered") {
+            markSkipped(b.steps.slice(b.steps.indexOf(inner) + 1), b.name, "skipped: filtered out");
+            await transition();
+            break; // a filter halts only its branch
+          }
+          if (signal === "failed") return "failed";
+        }
       }
-    } else {
-      let input: EffectInput | null = null;
-      try {
-        input = renderInput(step, ctx);
-      } catch {
-        rec.status = "failed";
-        rec.summary = "body template is not valid JSON";
-        halted = "failed";
-      }
-      if (input) {
-        let res: EffectResult;
+      return null;
+    }
+
+    // Effect step, with bounded retry.
+    let input: EffectInput | null = null;
+    try {
+      input = renderInput(step, ctx);
+    } catch {
+      rec.summary = "body template is not valid JSON";
+    }
+    let res: EffectResult = { ok: false, summary: rec.summary || "not run" };
+    if (input) {
+      const attempts = 1 + Math.max(0, Math.min(MAX_EXTRA_RETRIES, step.retries ?? 0));
+      for (let attempt = 1; attempt <= attempts; attempt++) {
         try {
           res = await pick(effects, step)(step, input);
         } catch (e) {
           res = { ok: false, summary: e instanceof Error ? e.message : "step crashed" };
         }
-        rec.summary = res.summary;
-        rec.output = boundOutput(res.output);
-        if (res.ok) {
-          (ctx.steps as Record<string, unknown>)[step.id] = { output: res.output };
-        } else {
-          rec.status = "failed";
-          halted = "failed";
+        if (res.ok || attempt === attempts) {
+          rec.summary = attempts > 1 ? `attempt ${attempt}/${attempts}: ${res.summary}` : res.summary;
+          break;
         }
+        await new Promise((r) => setTimeout(r, backoff(attempt)));
       }
+      rec.output = boundOutput(res.output);
     }
 
+    let signal: "failed" | null = null;
+    if (res.ok) {
+      (ctx.steps as Record<string, unknown>)[step.id] = { output: res.output };
+    } else {
+      rec.status = "failed";
+      if (step.onError === "continue" && input) {
+        anyFailed = true; // run keeps going; final status says "partial", never a clean "ok"
+      } else {
+        signal = "failed";
+      }
+    }
     rec.finishedAt = Date.now();
     run.steps.push(rec);
-    run.status = halted ?? "running";
-    if (onTransition) await onTransition(run);
+    await transition();
+    return signal;
   }
 
-  run.status = halted ?? "ok";
+  function markSkipped(steps: FlowStep[], branch: string | undefined, summary: string): void {
+    const now = Date.now();
+    for (const s of steps) {
+      run.steps.push({ stepId: s.id, name: s.name, type: s.type, status: "skipped", startedAt: now, finishedAt: now, summary, branch });
+    }
+  }
+
+  for (const step of flow.steps) {
+    if (halted) {
+      markSkipped([step], undefined, halted === "failed" ? "skipped: an earlier step failed" : "skipped: filtered out");
+      await transition();
+      continue;
+    }
+    const signal = await runStep(step);
+    if (signal) halted = signal;
+  }
+
+  run.status = halted === "failed" ? "failed" : halted === "filtered" ? "filtered" : anyFailed ? "partial" : "ok";
   run.finishedAt = Date.now();
   if (onTransition) await onTransition(run);
   return run;

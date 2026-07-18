@@ -83,8 +83,19 @@ per-step status, bounded outputs, honest failures (no fabricated success, same d
   fire-per-new-item capped at 10/tick, server-held `pollState`. Proven live:
   prime 3 -> widen window -> tick fired exactly 2 runs.
 
-**Still deferred (deliberate):** branching/parallel paths, template gallery, team
-workspaces, per-app trigger event catalogs (webhook auto-registration in the source app).
+Third increment same day (engine v2 + gallery):
+- **Branching: DONE.** `branch` step with up to 4 branches (one level deep); every branch
+  whose condition passes runs in order; a filter inside a branch halts only that branch;
+  a failure halts the run. Proven live both ways on the severity-router template.
+- **Resilience: DONE.** Per-step `retries` (0-2, backoff) and `onError: continue`; a run
+  that completes past a failed continue-step lands on the honest new `partial` status.
+  Proven live (cross-post template -> partial).
+- **Template gallery: DONE.** 7 curated templates (`lib/flow/templates.ts`), instantiated
+  server-side against existing connections (same honest needsConnections seam), strip on
+  /flows, `POST /api/flows {template}`.
+
+**Still deferred (deliberate):** team workspaces, per-app trigger event catalogs
+(webhook auto-registration in the source app), parallel/nested paths beyond one level.
 
 ## Sequencing rationale
 0 unlocks six built tiers for the cost of three env vars. 1 before 2 because the flagship loop needs durable artifacts between serverless invocations. 2 is the product's flagship moment and the demo that sells it. 3 broadens who can run it and retires the honest-open security items. 4 turns a generator into a self-maintaining platform. 5 is a refactor with regression risk, so it goes last on top of frozen behavior.

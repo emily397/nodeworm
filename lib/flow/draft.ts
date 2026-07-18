@@ -23,12 +23,15 @@ export interface FlowDraft {
 
 const LIVE = new Set(["connected", "connected-via-session", "connected-via-connector", "needs-verification"]);
 
-function match(app: string, conns: ConnectionRef[]): ConnectionRef | undefined {
+// Case-insensitive name match, preferring a live connection. Shared with the
+// template gallery.
+export function matchConnection(app: string, conns: ConnectionRef[]): ConnectionRef | undefined {
   const want = app.trim().toLowerCase();
   const named = conns.filter((c) => c.appName.trim().toLowerCase() === want);
   if (!named.length) return undefined;
   return named.find((c) => LIVE.has(c.status)) ?? named[0];
 }
+const match = matchConnection;
 
 export function planToFlow(plan: WorkflowPlan, conns: ConnectionRef[]): FlowDraft | null {
   if (plan.kind === "clarify" || plan.kind === "unmappable") return null;

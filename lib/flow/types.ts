@@ -23,7 +23,7 @@ export interface FlowTrigger {
   token?: string;
 }
 
-export type FlowStepType = "http" | "connector" | "ai" | "filter" | "webhook-out" | "mcp";
+export type FlowStepType = "http" | "connector" | "ai" | "filter" | "webhook-out" | "mcp" | "branch";
 
 export type ConditionOp = "eq" | "neq" | "contains" | "exists" | "gt" | "lt";
 
@@ -48,6 +48,19 @@ export interface FlowStep {
   prompt?: string; // ai (template)
   condition?: FlowCondition; // filter
   tool?: string; // mcp: tool name on the connector
+  // branch: every branch whose condition passes runs, in order. One level deep.
+  branches?: FlowBranch[];
+  // Resilience: retry a failed effect (0-2 extra attempts, backoff), and whether
+  // a final failure halts the run (default) or lets it continue as "partial".
+  retries?: number;
+  onError?: "halt" | "continue";
+}
+
+export interface FlowBranch {
+  id: string;
+  name: string;
+  condition?: FlowCondition; // absent = always runs
+  steps: FlowStep[]; // no nested branch steps
 }
 
 export interface Flow {
@@ -70,7 +83,8 @@ export interface Flow {
   pollState?: { seen: string[]; lastPolledAt?: number; lastDetail?: string };
 }
 
-export type RunStatus = "running" | "ok" | "failed" | "filtered";
+// "partial": the run completed but a continue-on-error step failed along the way.
+export type RunStatus = "running" | "ok" | "failed" | "filtered" | "partial";
 export type StepRunStatus = "ok" | "failed" | "skipped" | "filtered";
 
 export interface StepRun {
@@ -82,6 +96,7 @@ export interface StepRun {
   finishedAt: number;
   summary: string;
   output?: unknown; // bounded before persist
+  branch?: string; // set for steps that ran inside a branch, for display grouping
 }
 
 export interface FlowRun {
