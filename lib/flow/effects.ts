@@ -6,6 +6,7 @@ import { assertConnectorUrl } from "../engine/connector";
 import { chatJson, isLlmEnabled } from "../engine/llm";
 import type { Integration } from "../engine/types";
 import { getVaultConnector, getVaultTokens } from "../engine/vault";
+import { mcpEnvelope, parseMcpHttpBody, parseMcpResult } from "./mcp";
 import type { EffectInput, EffectResult, StepEffects } from "./run";
 import type { FlowStep } from "./types";
 
@@ -97,5 +98,49 @@ export function realEffects(getIntegration: (id: string) => Promise<Integration 
       if (!data) return { ok: false, summary: "every model in the cascade failed" };
       return { ok: true, summary: "model replied", output: data.result ?? data };
     },
+
+    async mcp(step, input) {
+      if (!step.tool) return { ok: false, summary: "pick a tool for this step" };
+      const { it, fail } = await connection(step);
+      if (fail) return { ok: false, summary: fail };
+      if (!it) return { ok: false, summary: "pick a connection for this step" };
+      const conn = await getVaultConnector(it.appName, { connectionId: it.id, userId: it.userId });
+      if (!conn) return { ok: false, summary: `no connector saved for ${it.appName}; verify it first` };
+      const blocked = await guard(conn.url);
+      if (blocked) return { ok: false, summary: blocked };
+      const headers: Record<string, string> = {};
+      if (conn.token) headers.authorization = /^(Bearer|Basic) /.test(conn.token) ? conn.token : `Bearer ${conn.token}`;
+
+      const args = input.body && typeof input.body === "object" ? (input.body as Record<string, unknown>) : {};
+      let reply = await mcpPost(conn.url, headers, mcpEnvelope("tools/call", { name: step.tool, arguments: args }));
+      // Stateless servers that still insist on the handshake: initialize, retry once.
+      if (reply && /initiali[sz]/i.test(JSON.stringify((reply as { error?: unknown }).error ?? ""))) {
+        await mcpPost(
+          conn.url,
+          headers,
+          mcpEnvelope("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "nodeworm-flows", version: "1.0" } }),
+        );
+        reply = await mcpPost(conn.url, headers, mcpEnvelope("tools/call", { name: step.tool, arguments: args }));
+      }
+      if (!reply) return { ok: false, summary: `could not reach the ${it.appName} connector as an MCP server` };
+      return parseMcpResult(reply);
+    },
   };
+}
+
+export async function mcpPost(url: string, headers: Record<string, string>, envelope: Record<string, unknown>): Promise<unknown | null> {
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json, text/event-stream", ...headers },
+      body: JSON.stringify(envelope),
+      redirect: "manual",
+      cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    const text = (await res.text().catch(() => "")).slice(0, MAX_BODY);
+    return parseMcpHttpBody(text);
+  } catch {
+    return null;
+  }
 }

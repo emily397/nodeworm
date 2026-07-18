@@ -5,11 +5,27 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { timeAgo } from "@/app/components/status";
 import type { Integration } from "@/lib/engine/types";
+import type { FlowAction } from "@/lib/flow/actions";
+import type { McpTool } from "@/lib/flow/mcp";
 import type { ConditionOp, Flow, FlowRun, FlowStep, FlowStepType, FlowTriggerType } from "@/lib/flow/types";
 import { RUN_COLORS, STEP_BLURBS, STEP_COLORS, STEP_LABELS, TRIGGER_LABEL } from "../meta";
 
-const STEP_TYPES: FlowStepType[] = ["http", "connector", "ai", "filter", "webhook-out"];
+const STEP_TYPES: FlowStepType[] = ["http", "mcp", "connector", "ai", "filter", "webhook-out"];
 const OPS: ConditionOp[] = ["eq", "neq", "contains", "exists", "gt", "lt"];
+
+// Per-connection action catalog (real discovered operations + live MCP tools).
+export interface Catalog {
+  actions: FlowAction[];
+  mcpTools: McpTool[];
+  source: string;
+}
+
+const CATALOG_SOURCE_LABEL: Record<string, string> = {
+  har: "from captured traffic",
+  probe: "from the app's own OpenAPI",
+  "apis.guru": "from the APIs.guru directory",
+  none: "no discovered operations",
+};
 
 let stepSeq = 0;
 function freshStep(type: FlowStepType): FlowStep {
@@ -51,6 +67,7 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
   const [running, setRunning] = useState(false);
   const [testPayload, setTestPayload] = useState('{\n  "example": "value"\n}');
   const [copied, setCopied] = useState(false);
+  const [catalogs, setCatalogs] = useState<Record<string, Catalog>>({});
 
   useEffect(() => {
     fetch("/api/integrations")
@@ -62,6 +79,19 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
       .then((d) => setHookUrl(d.hookUrl ?? null))
       .catch(() => {});
   }, [initial.id]);
+
+  // Lazily fetch the action catalog for every connection any step references.
+  useEffect(() => {
+    const wanted = new Set(flow.steps.map((s) => s.integrationId).filter(Boolean) as string[]);
+    for (const id of wanted) {
+      if (catalogs[id]) continue;
+      setCatalogs((c) => ({ ...c, [id]: { actions: [], mcpTools: [], source: "loading" } }));
+      fetch(`/api/integrations/${id}/actions`)
+        .then((r) => r.json())
+        .then((d) => setCatalogs((c) => ({ ...c, [id]: { actions: d.actions ?? [], mcpTools: d.mcpTools ?? [], source: d.source ?? "none" } })))
+        .catch(() => setCatalogs((c) => ({ ...c, [id]: { actions: [], mcpTools: [], source: "none" } })));
+    }
+  }, [flow.steps, catalogs]);
 
   function patch(p: Partial<Flow>) {
     setFlow((f) => ({ ...f, ...p }));
@@ -204,8 +234,8 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
                 </span>
               )}
             </div>
-            <div className="flex gap-1.5">
-              {(["webhook", "schedule", "manual"] as FlowTriggerType[]).map((t) => (
+            <div className="flex gap-1.5 flex-wrap">
+              {(["webhook", "poll", "schedule", "manual"] as FlowTriggerType[]).map((t) => (
                 <button
                   key={t}
                   onClick={() => patch({ trigger: { ...flow.trigger, type: t } })}
@@ -258,6 +288,64 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
             </div>
           )}
 
+          {flow.trigger.type === "poll" && (
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label="poll as connection (optional, adds auth)">
+                <select
+                  value={flow.trigger.integrationId ?? ""}
+                  onChange={(e) => patch({ trigger: { ...flow.trigger, integrationId: e.target.value || undefined } })}
+                  className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                  style={inputStyle}
+                >
+                  <option value="">unauthenticated</option>
+                  {connectionOptions}
+                </select>
+              </Field>
+              <Field label="url to watch">
+                <input
+                  value={flow.trigger.url ?? ""}
+                  onChange={(e) => patch({ trigger: { ...flow.trigger, url: e.target.value } })}
+                  placeholder="https://api.example.com/v1/orders"
+                  className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                  style={inputStyle}
+                />
+              </Field>
+              <div className="grid grid-cols-3 gap-3 sm:col-span-2">
+                <Field label="items path">
+                  <input
+                    value={flow.trigger.itemsPath ?? ""}
+                    onChange={(e) => patch({ trigger: { ...flow.trigger, itemsPath: e.target.value } })}
+                    placeholder="data (empty = whole response)"
+                    className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                    style={inputStyle}
+                  />
+                </Field>
+                <Field label="id field">
+                  <input
+                    value={flow.trigger.idPath ?? "id"}
+                    onChange={(e) => patch({ trigger: { ...flow.trigger, idPath: e.target.value } })}
+                    className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                    style={inputStyle}
+                  />
+                </Field>
+                <Field label="every (mins)">
+                  <input
+                    type="number"
+                    min={5}
+                    value={flow.trigger.scheduleMins ?? 15}
+                    onChange={(e) => patch({ trigger: { ...flow.trigger, scheduleMins: Number(e.target.value) } })}
+                    className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                    style={inputStyle}
+                  />
+                </Field>
+              </div>
+              <p className="sm:col-span-2 font-mono text-[0.62rem]" style={{ color: "var(--color-muted)" }}>
+                First poll primes the seen-set without firing; each genuinely new item then runs the flow once (item = <code>{"{{trigger.*}}"}</code>).
+                {flow.pollState?.lastDetail ? ` Last poll: ${flow.pollState.lastDetail}.` : ""}
+              </p>
+            </div>
+          )}
+
           {flow.trigger.type === "manual" && (
             <p className="font-mono text-xs" style={{ color: "var(--color-muted)" }}>
               Runs only when you press Run now.
@@ -282,6 +370,7 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
                 index={i}
                 total={flow.steps.length}
                 connectionOptions={connectionOptions}
+                catalog={s.integrationId ? catalogs[s.integrationId] : undefined}
                 onChange={(p) => patchStep(s.id, p)}
                 onMove={(d) => moveStep(s.id, d)}
                 onRemove={() => {
@@ -381,6 +470,7 @@ function StepCard({
   index,
   total,
   connectionOptions,
+  catalog,
   onChange,
   onMove,
   onRemove,
@@ -389,14 +479,21 @@ function StepCard({
   index: number;
   total: number;
   connectionOptions: React.ReactNode;
+  catalog?: Catalog;
   onChange: (p: Partial<FlowStep>) => void;
   onMove: (d: -1 | 1) => void;
   onRemove: () => void;
 }) {
   const [open, setOpen] = useState(true);
   const color = STEP_COLORS[step.type];
-  const usesConnection = step.type === "http" || step.type === "connector";
+  const usesConnection = step.type === "http" || step.type === "connector" || step.type === "mcp";
   const usesBody = step.type === "http" || step.type === "connector" || step.type === "webhook-out";
+
+  function applyAction(name: string) {
+    const a = catalog?.actions.find((x) => x.name === name);
+    if (!a) return;
+    onChange({ name: a.summary || a.name, method: a.method, url: a.url ?? step.url, body: a.bodyTemplate ?? step.body });
+  }
 
   return (
     <div className="card p-4" style={{ borderColor: `color-mix(in srgb, ${color} 30%, var(--color-line))` }}>
@@ -441,6 +538,73 @@ function StepCard({
                 {connectionOptions}
               </select>
             </Field>
+          )}
+
+          {step.type === "http" && step.integrationId && (
+            <Field label={`real operations ${CATALOG_SOURCE_LABEL[catalog?.source ?? "none"] ?? ""}`}>
+              <select
+                value=""
+                onChange={(e) => applyAction(e.target.value)}
+                disabled={!catalog || catalog.source === "loading" || catalog.actions.length === 0}
+                className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                style={inputStyle}
+              >
+                <option value="">
+                  {!catalog || catalog.source === "loading"
+                    ? "discovering operations..."
+                    : catalog.actions.length
+                      ? `prefill from ${catalog.actions.length} discovered operation(s)...`
+                      : "none discovered; configure manually"}
+                </option>
+                {catalog?.actions.map((a) => (
+                  <option key={`${a.method} ${a.path}`} value={a.name}>
+                    {a.method} {a.path} {a.summary ? `· ${a.summary}` : ""}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+
+          {step.type === "mcp" && (
+            <>
+              <Field label="tool">
+                {catalog?.mcpTools.length ? (
+                  <select
+                    value={step.tool ?? ""}
+                    onChange={(e) => onChange({ tool: e.target.value || undefined })}
+                    className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                    style={inputStyle}
+                  >
+                    <option value="">pick a live tool...</option>
+                    {catalog.mcpTools.map((t) => (
+                      <option key={t.name} value={t.name} title={t.description}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={step.tool ?? ""}
+                    onChange={(e) => onChange({ tool: e.target.value })}
+                    placeholder={step.integrationId ? "no live tools found; type a tool name" : "pick a connection first"}
+                    className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                    style={inputStyle}
+                  />
+                )}
+              </Field>
+              <div className="sm:col-span-2">
+                <Field label="tool arguments (JSON template)">
+                  <textarea
+                    value={step.body ?? ""}
+                    onChange={(e) => onChange({ body: e.target.value })}
+                    rows={3}
+                    placeholder='{"limit": 5, "query": "{{trigger.text}}"}'
+                    className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none resize-y"
+                    style={inputStyle}
+                  />
+                </Field>
+              </div>
+            </>
           )}
 
           {(step.type === "http" || step.type === "webhook-out") && (

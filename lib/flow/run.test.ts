@@ -20,7 +20,7 @@ function okEffects(calls: Array<{ type: string; input: unknown }> = []): StepEff
     calls.push({ type, input });
     return { ok: true, summary: `${type} ok`, output: { echoed: input } };
   };
-  return { http: record("http"), connector: record("connector"), ai: record("ai"), webhookOut: record("webhook-out") };
+  return { http: record("http"), connector: record("connector"), ai: record("ai"), webhookOut: record("webhook-out"), mcp: record("mcp") };
 }
 
 describe("executeFlow", () => {
@@ -36,6 +36,15 @@ describe("executeFlow", () => {
     expect(run.steps.map((s) => s.status)).toEqual(["ok", "ok"]);
     expect((calls[0].input as { body: { email: string } }).body.email).toBe("amy@x.com");
     expect((calls[1].input as { body: { was: string } }).body.was).toBe("amy@x.com");
+  });
+
+  it("routes an mcp step to the mcp effect with rendered arguments", async () => {
+    const calls: Array<{ type: string; input: { body?: unknown } }> = [];
+    const f = flow([{ id: "a", type: "mcp", name: "tool", tool: "list_rows", body: '{"q":"{{trigger.q}}"}' }]);
+    const run = await executeFlow(f, { type: "manual", summary: "m", payload: { q: "vip" } }, okEffects(calls));
+    expect(run.status).toBe("ok");
+    expect(calls[0].type).toBe("mcp");
+    expect((calls[0].input as { body: { q: string } }).body.q).toBe("vip");
   });
 
   it("stops at a false filter: run filtered, later steps skipped", async () => {

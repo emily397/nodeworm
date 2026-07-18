@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { fireFlow } from "@/lib/flow/runtime";
+import { fireFlow, pollFlowTick } from "@/lib/flow/runtime";
 import { listFlows } from "@/lib/flow/store";
+import type { Flow } from "@/lib/flow/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,19 +13,28 @@ function authorized(req: Request): boolean {
   return req.headers.get("authorization") === `Bearer ${secret}`;
 }
 
-// Scheduler tick (Vercel Cron): run every enabled schedule-triggered flow whose
-// interval has elapsed since its last run.
+// Scheduler tick (Vercel Cron): run enabled schedule-triggered flows whose
+// interval elapsed, and poll enabled watch-an-app flows (prime-then-dedupe).
+function isDue(f: Flow, now: number): boolean {
+  const interval = (f.trigger.scheduleMins ?? 60) * 60_000;
+  const last = f.trigger.type === "poll" ? f.pollState?.lastPolledAt ?? 0 : f.lastRunAt ?? 0;
+  return now - last >= interval;
+}
+
 async function sweep(): Promise<Response> {
   const now = Date.now();
-  const due = (await listFlows()).filter(
-    (f) => f.enabled && f.trigger.type === "schedule" && now - (f.lastRunAt ?? 0) >= (f.trigger.scheduleMins ?? 60) * 60_000,
-  );
-  const ran: Array<{ id: string; status: string }> = [];
-  for (const flow of due) {
+  const flows = await listFlows();
+  const ran: Array<{ id: string; kind: string; status?: string; fired?: number; detail?: string }> = [];
+
+  for (const flow of flows.filter((f) => f.enabled && f.trigger.type === "schedule" && isDue(f, now))) {
     const run = await fireFlow(flow, { type: "schedule", summary: "scheduled run", payload: { scheduledAt: now } });
-    ran.push({ id: flow.id, status: run.status });
+    ran.push({ id: flow.id, kind: "schedule", status: run.status });
   }
-  return NextResponse.json({ ok: true, due: due.length, ran });
+  for (const flow of flows.filter((f) => f.enabled && f.trigger.type === "poll" && isDue(f, now))) {
+    const r = await pollFlowTick(flow);
+    ran.push({ id: flow.id, kind: "poll", fired: r.fired, detail: r.detail });
+  }
+  return NextResponse.json({ ok: true, ran });
 }
 
 export async function GET(req: Request) {

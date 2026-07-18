@@ -70,9 +70,21 @@ per-step status, bounded outputs, honest failures (no fabricated success, same d
   run panel + history). TopBar nav. Existing vibrant design system (aurora/amber/berry/aqua).
 - **6d Verify + ship:** tsc + build + vitest green, deploy, prod-verified with a real flow run.
 
-**Deferred to a later pass (deliberate):** typed per-app action pickers from
-`wire.outboundTools`, MCP `tools/call` step against generated connectors, polling triggers
-with dedupe cursors, branching/parallel paths, template gallery, team workspaces.
+**6a-6d SHIPPED 2026-07-18** (commit b93fa6a, prod-verified E2E). Second increment same day:
+- **Typed action picker: DONE.** `collectSurfaceOps` extracted from generate-pipeline (same
+  endpoint ladder: captured traffic -> own OpenAPI -> APIs.guru) feeds
+  `GET /api/integrations/[id]/actions`; the http step's picker prefills genuine
+  method/URL/body-skeleton (proven live: 13 real Notion ops, api.notion.com base).
+- **MCP tool step: DONE.** Step type `mcp`: tools/call over Streamable HTTP against the
+  vaulted connector (SSE-or-JSON reply parsing, initialize-retry for strict servers,
+  live tools/list picker in the builder). Honest failure without a verified connector.
+- **Polling triggers: DONE.** Trigger type `poll` (watch an app): authed fetch as the
+  trigger's connection, `itemsPath`/`idPath` dedupe, first poll primes without firing,
+  fire-per-new-item capped at 10/tick, server-held `pollState`. Proven live:
+  prime 3 -> widen window -> tick fired exactly 2 runs.
+
+**Still deferred (deliberate):** branching/parallel paths, template gallery, team
+workspaces, per-app trigger event catalogs (webhook auto-registration in the source app).
 
 ## Sequencing rationale
 0 unlocks six built tiers for the cost of three env vars. 1 before 2 because the flagship loop needs durable artifacts between serverless invocations. 2 is the product's flagship moment and the demo that sells it. 3 broadens who can run it and retires the honest-open security items. 4 turns a generator into a self-maintaining platform. 5 is a refactor with regression risk, so it goes last on top of frozen behavior.

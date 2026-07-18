@@ -4,7 +4,7 @@
 
 import type { Flow, FlowStep, FlowStepType, FlowTrigger } from "./types";
 
-const STEP_TYPES: FlowStepType[] = ["http", "connector", "ai", "filter", "webhook-out"];
+const STEP_TYPES: FlowStepType[] = ["http", "connector", "ai", "filter", "webhook-out", "mcp"];
 const OPS = new Set(["eq", "neq", "contains", "exists", "gt", "lt"]);
 export const MAX_STEPS = 20;
 export const MIN_SCHEDULE_MINS = 5;
@@ -56,6 +56,7 @@ function sanitizeStep(v: unknown, i: number): FlowStep | null {
     path: str(s.path),
     body: typeof s.body === "string" ? s.body : undefined,
     prompt: typeof s.prompt === "string" ? s.prompt : undefined,
+    tool: str(s.tool),
   };
   const c = s.condition as Record<string, unknown> | undefined;
   if (c && typeof c === "object" && typeof c.left === "string" && OPS.has(String(c.op))) {
@@ -67,7 +68,7 @@ function sanitizeStep(v: unknown, i: number): FlowStep | null {
 function sanitizeTrigger(v: unknown, existing: FlowTrigger): FlowTrigger {
   if (!v || typeof v !== "object") return existing;
   const t = v as Record<string, unknown>;
-  const type = t.type === "webhook" || t.type === "schedule" || t.type === "manual" ? t.type : existing.type;
+  const type = t.type === "webhook" || t.type === "schedule" || t.type === "manual" || t.type === "poll" ? t.type : existing.type;
   const out: FlowTrigger = {
     type,
     integrationId: str(t.integrationId) ?? existing.integrationId,
@@ -75,9 +76,15 @@ function sanitizeTrigger(v: unknown, existing: FlowTrigger): FlowTrigger {
     event: str(t.event) ?? existing.event,
     token: existing.token, // server-held; never client-set
   };
-  if (type === "schedule") {
+  if (type === "schedule" || type === "poll") {
     const mins = Number(t.scheduleMins ?? existing.scheduleMins ?? 60);
     out.scheduleMins = Math.max(MIN_SCHEDULE_MINS, Math.floor(Number.isFinite(mins) ? mins : 60));
+  }
+  if (type === "poll") {
+    out.url = str(t.url) ?? existing.url;
+    out.method = str(t.method)?.toUpperCase() ?? existing.method;
+    out.itemsPath = typeof t.itemsPath === "string" ? t.itemsPath.trim() : existing.itemsPath;
+    out.idPath = str(t.idPath) ?? existing.idPath ?? "id";
   }
   return out;
 }

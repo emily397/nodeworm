@@ -24,6 +24,7 @@ export interface StepEffects {
   connector(step: FlowStep, input: EffectInput): Promise<EffectResult>;
   ai(step: FlowStep, input: EffectInput): Promise<EffectResult>;
   webhookOut(step: FlowStep, input: EffectInput): Promise<EffectResult>;
+  mcp(step: FlowStep, input: EffectInput): Promise<EffectResult>;
 }
 
 export interface TriggerFire {
@@ -166,6 +167,8 @@ function pick(effects: StepEffects, step: FlowStep) {
       return effects.ai;
     case "webhook-out":
       return effects.webhookOut;
+    case "mcp":
+      return effects.mcp;
     default:
       return effects.http;
   }

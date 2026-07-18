@@ -56,6 +56,27 @@ describe("applyPatch", () => {
     expect(out.steps.length).toBeLessThanOrEqual(20);
   });
 
+  it("accepts an mcp step with its tool name", () => {
+    const f = newFlowRecord("x");
+    const out = applyPatch(f, { steps: [{ type: "mcp", name: "call tool", integrationId: "i1", tool: "list_rows", body: '{"limit":5}' }] });
+    expect(out.steps).toHaveLength(1);
+    expect(out.steps[0].type).toBe("mcp");
+    expect(out.steps[0].tool).toBe("list_rows");
+  });
+
+  it("accepts a poll trigger with url, items path and id path, clamping the interval", () => {
+    const f = newFlowRecord("x");
+    const out = applyPatch(f, {
+      trigger: { type: "poll", url: "https://api.x.com/things", itemsPath: "data", idPath: "id", scheduleMins: 2 },
+    });
+    expect(out.trigger.type).toBe("poll");
+    expect(out.trigger.url).toBe("https://api.x.com/things");
+    expect(out.trigger.itemsPath).toBe("data");
+    expect(out.trigger.idPath).toBe("id");
+    expect(out.trigger.scheduleMins).toBe(5);
+    expect(out.trigger.token).toBe(f.trigger.token);
+  });
+
   it("ignores junk patch values without throwing", () => {
     const f = newFlowRecord("x");
     const out = applyPatch(f, { name: 42, trigger: "nope", steps: "nope" });

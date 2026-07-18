@@ -130,6 +130,36 @@ async function parseOpenApi(specUrl?: string): Promise<{ ops: OpenApiOp[]; apiBa
   }
 }
 
+// The endpoint ladder, shared by generation and the flow builder's action
+// catalog: captured traffic (ground truth) wins, the app's own probed OpenAPI
+// fills gaps, APIs.guru covers apps that don't advertise a spec.
+export interface SurfaceOps {
+  ops: OpenApiOp[];
+  apiBase?: string;
+  authHeader?: string;
+  specSource: "probe" | "apis.guru" | "har" | "none";
+}
+
+export async function collectSurfaceOps(it: Integration, captureInput?: unknown): Promise<SurfaceOps> {
+  let specSource: SurfaceOps["specSource"] = "none";
+  let specUrl = it.discovery?.probe?.openApiUrl;
+  if (specUrl) specSource = "probe";
+  else if (it.discovery?.hasPublicApi && it.discovery.apiType !== "graphql") {
+    const guru = await apisGuruSpecUrl(it.discovery.appUrl || it.appName);
+    if (guru) {
+      specUrl = guru.specUrl;
+      specSource = "apis.guru";
+    }
+  }
+  const capture = captureInput ?? it.capturedRequests;
+  const harResult = capture ? normalizeCapture(capture) : { ops: [], apiBase: undefined, authHeader: undefined };
+  const specResult = it.discovery?.hasPublicApi ? await parseOpenApi(specUrl) : { ops: [], apiBase: undefined };
+  const seen = new Set(harResult.ops.map((o) => `${o.method} ${o.path}`));
+  const ops = [...harResult.ops, ...specResult.ops.filter((o) => !seen.has(`${o.method} ${o.path}`))].slice(0, 40);
+  if (harResult.ops.length) specSource = "har";
+  return { ops, apiBase: harResult.apiBase ?? specResult.apiBase, authHeader: harResult.authHeader, specSource };
+}
+
 export interface GenerateResult {
   ok: true;
   kind: string;
@@ -194,30 +224,9 @@ export async function generateForIntegration(
     }
   }
 
-  // OpenAPI source: the app's own discovered spec first; else fall back to the real
-  // spec from the APIs.guru directory (thousands of apps that don't advertise one).
-  let specSource: "probe" | "apis.guru" | "har" | "none" = "none";
-  let specUrl = it.discovery.probe?.openApiUrl;
-  if (specUrl) specSource = "probe";
-  else if (it.discovery.hasPublicApi && it.discovery.apiType !== "graphql") {
-    const guru = await apisGuruSpecUrl(it.discovery.appUrl || it.appName);
-    if (guru) {
-      specUrl = guru.specUrl;
-      specSource = "apis.guru";
-    }
-  }
-  // Captured-traffic source (highest signal): a HAR from the managed session /
-  // Helper / devtools export reveals the app's REAL private API. It unlocks
-  // generation even when the app advertises no public spec at all.
-  const captureInput = body.har ?? body.capturedRequests ?? it.capturedRequests;
-  const harResult = captureInput ? normalizeCapture(captureInput) : { ops: [], apiBase: undefined, authHeader: undefined };
-
-  const specResult = it.discovery.hasPublicApi ? await parseOpenApi(specUrl) : { ops: [], apiBase: undefined };
-  // HAR ops win on conflicts (they are ground truth), then spec ops fill gaps.
-  const seen = new Set(harResult.ops.map((o) => `${o.method} ${o.path}`));
-  const ops = [...harResult.ops, ...specResult.ops.filter((o) => !seen.has(`${o.method} ${o.path}`))].slice(0, 40);
-  const apiBase = harResult.apiBase ?? specResult.apiBase;
-  if (harResult.ops.length) specSource = "har";
+  const surface = await collectSurfaceOps(it, body.har ?? body.capturedRequests);
+  const { ops, apiBase, specSource } = surface;
+  const harResult = { ops: specSource === "har" ? ops : [], authHeader: surface.authHeader };
 
   const gqlFields = it.discovery.apiType === "graphql" ? await graphqlQueryFields(it.discovery.probe?.graphqlUrl) : [];
   // Captured traffic gives a real REST surface even for apps with no public API, so

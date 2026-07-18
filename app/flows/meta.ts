@@ -9,6 +9,7 @@ export const STEP_COLORS: Record<FlowStepType, string> = {
   ai: "var(--color-grape)",
   filter: "var(--color-amber)",
   "webhook-out": "var(--color-berry)",
+  mcp: "var(--color-teal)",
 };
 
 export const STEP_LABELS: Record<FlowStepType, string> = {
@@ -17,6 +18,7 @@ export const STEP_LABELS: Record<FlowStepType, string> = {
   ai: "AI step",
   filter: "Filter",
   "webhook-out": "Send webhook",
+  mcp: "MCP tool",
 };
 
 export const STEP_BLURBS: Record<FlowStepType, string> = {
@@ -25,12 +27,14 @@ export const STEP_BLURBS: Record<FlowStepType, string> = {
   ai: "Let a model transform, summarise or decide",
   filter: "Only continue when a condition holds",
   "webhook-out": "POST the result anywhere",
+  mcp: "Call a typed tool on your generated / tunneled MCP connector",
 };
 
 export const TRIGGER_LABEL: Record<FlowTriggerType, string> = {
   webhook: "on webhook",
   schedule: "on a schedule",
   manual: "run manually",
+  poll: "watch an app",
 };
 
 export const RUN_COLORS: Record<RunStatus | StepRunStatus, string> = {
