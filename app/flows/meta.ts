@@ -13,31 +13,46 @@ export const STEP_COLORS: Record<FlowStepType, string> = {
   branch: "var(--color-live)",
 };
 
+// Plain-language labels shown to everyone. The technical shape (http vs mcp vs
+// connector) is an implementation detail; a person just picks "Do something in
+// an app" and the builder keeps the right underlying type.
 export const STEP_LABELS: Record<FlowStepType, string> = {
-  http: "App call",
-  connector: "Connector call",
-  ai: "AI step",
-  filter: "Filter",
-  "webhook-out": "Send webhook",
-  mcp: "MCP tool",
-  branch: "Branch",
+  http: "Do something in an app",
+  connector: "Use your own connector",
+  ai: "Ask AI",
+  filter: "Only continue if…",
+  "webhook-out": "Send to a web address",
+  mcp: "Run an app tool",
+  branch: "Split into paths",
 };
 
 export const STEP_BLURBS: Record<FlowStepType, string> = {
-  http: "Call an app's API as one of your connections (auth injected from the vault)",
-  connector: "Call your verified self-hosted or tunneled connector",
-  ai: "Let a model transform, summarise or decide",
-  filter: "Only continue when a condition holds",
-  "webhook-out": "POST the result anywhere",
-  mcp: "Call a typed tool on your generated / tunneled MCP connector",
-  branch: "Split into paths; every branch whose condition holds runs",
+  http: "Create, update or fetch something in one of your connected apps",
+  connector: "Call a connector you host yourself (advanced)",
+  ai: "Let AI write, summarise, classify or decide",
+  filter: "Stop here unless a condition is true",
+  "webhook-out": "Send the result to any web address (advanced)",
+  mcp: "Call a ready-made tool on a connected app (advanced)",
+  branch: "Take different paths depending on the data",
 };
 
+// Steps a non-technical person sees first; the rest live behind "More step types".
+export const PRIMARY_STEP_TYPES: FlowStepType[] = ["http", "ai", "filter", "branch"];
+export const ADVANCED_STEP_TYPES: FlowStepType[] = ["mcp", "connector", "webhook-out"];
+
 export const TRIGGER_LABEL: Record<FlowTriggerType, string> = {
-  webhook: "on webhook",
+  webhook: "When an app sends an event",
+  schedule: "On a schedule",
+  manual: "Only when I run it",
+  poll: "When something new appears",
+};
+
+// Short chip label for the list view.
+export const TRIGGER_CHIP: Record<FlowTriggerType, string> = {
+  webhook: "on an app event",
   schedule: "on a schedule",
-  manual: "run manually",
-  poll: "watch an app",
+  manual: "run by hand",
+  poll: "watches an app",
 };
 
 export const RUN_COLORS: Record<RunStatus | StepRunStatus, string> = {

@@ -8,10 +8,9 @@ import type { Integration } from "@/lib/engine/types";
 import type { FlowAction } from "@/lib/flow/actions";
 import type { McpTool } from "@/lib/flow/mcp";
 import type { ConditionOp, Flow, FlowBranch, FlowCondition, FlowRun, FlowStep, FlowStepType, FlowTriggerType } from "@/lib/flow/types";
-import { RUN_COLORS, STEP_BLURBS, STEP_COLORS, STEP_LABELS, TRIGGER_LABEL } from "../meta";
+import { ADVANCED_STEP_TYPES, PRIMARY_STEP_TYPES, RUN_COLORS, STEP_BLURBS, STEP_COLORS, STEP_LABELS, TRIGGER_LABEL } from "../meta";
 
-const STEP_TYPES: FlowStepType[] = ["http", "mcp", "connector", "ai", "filter", "webhook-out", "branch"];
-const BRANCH_STEP_TYPES: FlowStepType[] = ["http", "mcp", "connector", "ai", "filter", "webhook-out"];
+const BRANCH_STEP_TYPES: FlowStepType[] = ["http", "ai", "filter", "webhook-out"];
 const OPS: ConditionOp[] = ["eq", "neq", "contains", "exists", "gt", "lt"];
 
 // Per-connection action catalog (real discovered operations + live MCP tools).
@@ -53,6 +52,46 @@ const inputStyle: React.CSSProperties = {
   color: "var(--color-ink)",
 };
 
+// Plain-language account status. Hides the engine's internal state names.
+const LIVE_STATUSES = new Set(["connected", "connected-via-session", "connected-via-connector", "needs-verification"]);
+function connLabel(status: string): string {
+  if (LIVE_STATUSES.has(status)) return "connected";
+  if (status === "running" || status === "planned" || status === "draft") return "being set up";
+  return "needs sign-in";
+}
+function connReady(status: string): boolean {
+  return LIVE_STATUSES.has(status);
+}
+
+// Build the account options for a step: the relevant app's accounts first, ready
+// ones ahead of the rest, and a deduped display so the giant test-data list stops
+// being a wall. When the step targets a specific app we show only that app's
+// accounts (with a "show every account" escape hatch handled by the caller).
+function connectionOptionsFor(connections: Integration[], appName: string | undefined, showAll: boolean): React.ReactNode {
+  const want = appName?.trim().toLowerCase();
+  let list = connections;
+  if (want && !showAll) list = connections.filter((c) => c.appName.trim().toLowerCase() === want);
+  const seen = new Set<string>();
+  const sorted = [...list].sort((a, b) => {
+    const am = want && a.appName.toLowerCase() === want ? 0 : 1;
+    const bm = want && b.appName.toLowerCase() === want ? 0 : 1;
+    if (am !== bm) return am - bm;
+    return Number(connReady(b.status)) - Number(connReady(a.status));
+  });
+  return sorted
+    .filter((c) => {
+      const key = `${c.appName.toLowerCase()}|${connLabel(c.status)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((c) => (
+      <option key={c.id} value={c.id}>
+        {`${c.appName} (${connLabel(c.status)})`}
+      </option>
+    ));
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
@@ -85,6 +124,7 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
   const [regParams, setRegParams] = useState<Record<string, string>>({});
   const [regBusy, setRegBusy] = useState(false);
   const [regError, setRegError] = useState<string | null>(null);
+  const [showAdvancedSteps, setShowAdvancedSteps] = useState(false);
   const [ws, setWs] = useState<{ signedIn?: boolean; userId?: string; workspaces: Array<{ id: string; name: string }> } | null>(null);
 
   useEffect(() => {
@@ -247,28 +287,24 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
     setTimeout(() => setCopied(false), 1600);
   }
 
-  const connectionOptions = useMemo(
-    () =>
-      connections.map((c) => (
-        <option key={c.id} value={c.id}>
-          {c.appName} ({c.status})
-        </option>
-      )),
-    [connections],
+  // Options for the trigger's poll/webhook account picker (filtered to the app).
+  const triggerConnOptions = useMemo(
+    () => connectionOptionsFor(connections, flow.trigger.appName, false),
+    [connections, flow.trigger.appName],
   );
 
   return (
     <div className="grid lg:grid-cols-[1fr_360px] gap-8">
       <div>
         <div className="flex flex-wrap items-center gap-3 mb-2">
-          <Link href="/flows" className="font-mono text-xs" style={{ color: "var(--color-muted)" }}>
-            flows /
+          <Link href="/flows" className="text-xs" style={{ color: "var(--color-muted)" }}>
+            ← All automations
           </Link>
           <span className="chip">
             <span className="dot" style={{ background: flow.enabled ? "var(--color-live)" : "var(--color-amber)" }} />
-            {flow.enabled ? "live" : "paused"}
+            {flow.enabled ? "on" : "off"}
           </span>
-          {flow.draftedBy === "ai" && <span className="chip">AI-drafted</span>}
+          {flow.draftedBy === "ai" && <span className="chip">written by AI</span>}
         </div>
 
         <input
@@ -276,36 +312,36 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
           onChange={(e) => patch({ name: e.target.value })}
           className="w-full bg-transparent outline-none font-display font-extrabold text-[clamp(1.6rem,4vw,2.4rem)] leading-tight mb-1"
           style={{ color: "var(--color-ink)" }}
-          aria-label="Flow name"
+          aria-label="Automation name"
         />
         {flow.description && (
-          <p className="font-mono text-xs mb-4" style={{ color: "var(--color-muted)" }}>
+          <p className="text-sm mb-4" style={{ color: "var(--color-muted)" }}>
             &ldquo;{flow.description}&rdquo;
           </p>
         )}
 
         {flow.needsConnections && flow.needsConnections.length > 0 && (
           <div
-            className="rounded-xl px-4 py-3 mb-5 font-mono text-xs"
+            className="rounded-xl px-4 py-3 mb-5 text-sm"
             style={{ border: "1px solid color-mix(in srgb, var(--color-amber) 50%, transparent)", color: "var(--color-ink-soft)" }}
           >
-            This flow wants {flow.needsConnections.join(" + ")} connected.{" "}
-            <Link href="/" className="underline decoration-dotted" style={{ color: "var(--color-signal)" }}>
-              Dispatch the swarm
-            </Link>{" "}
-            then pick the connection on the step.
+            First connect {flow.needsConnections.join(" and ")} so this can run.{" "}
+            <Link href="/integrations" className="underline decoration-dotted font-semibold" style={{ color: "var(--color-signal)" }}>
+              Connect an app
+            </Link>
+            , then choose the account on each step below.
           </div>
         )}
 
         {/* Trigger */}
         <div className="card-pop p-5 mb-1 relative">
-          <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-2.5">
               <span className="dot" style={{ width: 12, height: 12, background: "var(--color-teal)" }} />
-              <span className="font-display font-bold">Trigger</span>
+              <span className="font-display font-bold">When should this run?</span>
               {flow.trigger.appName && (
-                <span className="font-mono text-xs" style={{ color: "var(--color-muted)" }}>
-                  {flow.trigger.appName} · {flow.trigger.event}
+                <span className="text-xs" style={{ color: "var(--color-muted)" }}>
+                  {flow.trigger.appName}: {flow.trigger.event}
                 </span>
               )}
             </div>
@@ -314,7 +350,7 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
                 <button
                   key={t}
                   onClick={() => patch({ trigger: { ...flow.trigger, type: t } })}
-                  className="font-mono text-[0.66rem] uppercase tracking-wider px-2.5 py-1.5 rounded-lg transition-colors"
+                  className="text-xs px-2.5 py-1.5 rounded-lg transition-colors"
                   style={{
                     border: `1px solid ${flow.trigger.type === t ? "var(--color-teal)" : "var(--color-line)"}`,
                     color: flow.trigger.type === t ? "var(--color-teal)" : "var(--color-muted)",
@@ -329,28 +365,42 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
 
           {flow.trigger.type === "webhook" && (
             <div className="flex flex-wrap items-center gap-2">
-              <code
-                className="flex-1 min-w-[220px] truncate font-mono text-[0.7rem] rounded-lg px-3 py-2"
-                style={{ background: "var(--color-paper-2)", border: "1px solid var(--color-line)", color: "var(--color-ink-soft)" }}
-              >
-                {hookUrl ?? "loading hook URL..."}
-              </code>
-              <button onClick={copyHook} className="btn btn-ghost text-xs" disabled={!hookUrl}>
-                {copied ? "copied" : "copy"}
-              </button>
+              <p className="w-full text-sm" style={{ color: "var(--color-ink-soft)" }}>
+                {flow.trigger.appName ?? "The app"} tells NodeWorm the moment this happens. Press the button below and NodeWorm
+                sets that up for you.
+              </p>
+              <details className="w-full">
+                <summary className="text-xs cursor-pointer" style={{ color: "var(--color-muted)" }}>
+                  Set it up manually instead
+                </summary>
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <code
+                    className="flex-1 min-w-[220px] truncate font-mono text-[0.7rem] rounded-lg px-3 py-2"
+                    style={{ background: "var(--color-paper-2)", border: "1px solid var(--color-line)", color: "var(--color-ink-soft)" }}
+                  >
+                    {hookUrl ?? "loading..."}
+                  </code>
+                  <button onClick={copyHook} className="btn btn-ghost text-xs" disabled={!hookUrl}>
+                    {copied ? "copied" : "copy"}
+                  </button>
+                  <span className="w-full text-[0.7rem]" style={{ color: "var(--color-muted)" }}>
+                    Paste this web address into {flow.trigger.appName ?? "the app"}&apos;s webhook settings. NodeWorm confirms it automatically.
+                  </span>
+                </div>
+              </details>
               {reg && reg.mode !== "none" && (
                 <div className="w-full rounded-xl px-3 py-2.5 space-y-2" style={{ border: "1px dashed var(--color-line-2)" }}>
                   {reg.registration?.state === "registered" ? (
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="chip">
                         <span className="dot" style={{ background: "var(--color-live)" }} />
-                        registered{reg.registration.id ? ` · ${reg.registration.id}` : ""}
+                        set up automatically
                       </span>
-                      <span className="font-mono text-[0.62rem] flex-1" style={{ color: "var(--color-muted)" }}>
-                        {reg.registration.detail}
+                      <span className="text-xs flex-1" style={{ color: "var(--color-muted)" }}>
+                        NodeWorm is now listening for events from {flow.trigger.appName ?? "the app"}.
                       </span>
-                      <button onClick={unregisterHook} disabled={regBusy} className="font-mono text-xs px-2 py-1 rounded-lg" style={{ color: "var(--color-muted)", border: "1px solid var(--color-line)" }}>
-                        un-register
+                      <button onClick={unregisterHook} disabled={regBusy} className="text-xs px-2 py-1 rounded-lg" style={{ color: "var(--color-muted)", border: "1px solid var(--color-line)" }}>
+                        undo
                       </button>
                     </div>
                   ) : (
@@ -360,104 +410,108 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
                           key={p.key}
                           value={regParams[p.key] ?? ""}
                           onChange={(e) => setRegParams((v) => ({ ...v, [p.key]: e.target.value }))}
-                          placeholder={`${p.label} (${p.example})`}
-                          className="flex-1 min-w-[160px] rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                          placeholder={`${p.label} (example: ${p.example})`}
+                          className="flex-1 min-w-[160px] rounded-lg px-3 py-2 text-sm outline-none"
                           style={inputStyle}
                         />
                       ))}
                       <button onClick={registerHook} disabled={regBusy} className="btn btn-signal text-xs whitespace-nowrap">
-                        {regBusy ? "registering..." : `⚡ Register in ${flow.trigger.appName ?? "the app"}`}
+                        {regBusy ? "setting up..." : `Set this up in ${flow.trigger.appName ?? "the app"} for me`}
                       </button>
-                      <span className="w-full font-mono text-[0.62rem]" style={{ color: "var(--color-muted)" }}>
-                        {reg.detail}
-                        {reg.registration?.state === "failed" ? ` · last attempt: ${reg.registration.detail}` : ""}
-                        {regError ? ` · ${regError}` : ""}
-                      </span>
+                      {reg.registration?.state === "failed" && (
+                        <span className="w-full text-[0.7rem]" style={{ color: "var(--color-blocked)" }}>
+                          That did not work: {reg.registration.detail}. You can set it up manually above.
+                        </span>
+                      )}
+                      {regError && (
+                        <span className="w-full text-[0.7rem]" style={{ color: "var(--color-blocked)" }}>
+                          {regError}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
               )}
-              <span className="w-full font-mono text-[0.62rem]" style={{ color: "var(--color-muted)" }}>
-                {reg?.registration?.state === "registered"
-                  ? "NodeWorm registered this URL inside the app for you."
-                  : "Or register this URL in the source app yourself; NodeWorm answers its verification challenge automatically."}
-              </span>
             </div>
           )}
 
           {flow.trigger.type === "schedule" && (
-            <div className="flex items-center gap-3">
-              <span className="font-mono text-xs" style={{ color: "var(--color-muted)" }}>
-                every
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-sm" style={{ color: "var(--color-ink-soft)" }}>
+                Run this every
               </span>
               <input
                 type="number"
                 min={5}
                 value={flow.trigger.scheduleMins ?? 60}
                 onChange={(e) => patch({ trigger: { ...flow.trigger, scheduleMins: Number(e.target.value) } })}
-                className="w-24 rounded-lg px-3 py-2 font-mono text-sm outline-none"
+                className="w-24 rounded-lg px-3 py-2 text-sm outline-none"
                 style={inputStyle}
               />
-              <span className="font-mono text-xs" style={{ color: "var(--color-muted)" }}>
-                minutes (5 min floor)
+              <span className="text-sm" style={{ color: "var(--color-ink-soft)" }}>
+                minutes (5 minimum)
               </span>
             </div>
           )}
 
           {flow.trigger.type === "poll" && (
             <div className="grid sm:grid-cols-2 gap-3">
-              <Field label="poll as connection (optional, adds auth)">
+              <Field label="check it using which account (optional)">
                 <select
                   value={flow.trigger.integrationId ?? ""}
                   onChange={(e) => patch({ trigger: { ...flow.trigger, integrationId: e.target.value || undefined } })}
                   className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
                   style={inputStyle}
                 >
-                  <option value="">unauthenticated</option>
-                  {connectionOptions}
+                  <option value="">no sign-in needed</option>
+                  {triggerConnOptions}
                 </select>
               </Field>
-              <Field label="url to watch">
+              <Field label="web address to check">
                 <input
                   value={flow.trigger.url ?? ""}
                   onChange={(e) => patch({ trigger: { ...flow.trigger, url: e.target.value } })}
-                  placeholder="https://api.example.com/v1/orders"
+                  placeholder="https://example.com/orders"
                   className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
                   style={inputStyle}
                 />
               </Field>
               <div className="grid grid-cols-3 gap-3 sm:col-span-2">
-                <Field label="items path">
-                  <input
-                    value={flow.trigger.itemsPath ?? ""}
-                    onChange={(e) => patch({ trigger: { ...flow.trigger, itemsPath: e.target.value } })}
-                    placeholder="data (empty = whole response)"
-                    className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
-                    style={inputStyle}
-                  />
-                </Field>
-                <Field label="id field">
-                  <input
-                    value={flow.trigger.idPath ?? "id"}
-                    onChange={(e) => patch({ trigger: { ...flow.trigger, idPath: e.target.value } })}
-                    className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
-                    style={inputStyle}
-                  />
-                </Field>
-                <Field label="every (mins)">
+                <Field label="check every (mins)">
                   <input
                     type="number"
                     min={5}
                     value={flow.trigger.scheduleMins ?? 15}
                     onChange={(e) => patch({ trigger: { ...flow.trigger, scheduleMins: Number(e.target.value) } })}
-                    className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                    className="w-full rounded-lg px-3 py-2 text-sm outline-none"
                     style={inputStyle}
                   />
                 </Field>
+                <details className="col-span-2 self-center">
+                  <summary className="text-xs cursor-pointer" style={{ color: "var(--color-muted)" }}>
+                    Advanced: where the list lives
+                  </summary>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <input
+                      value={flow.trigger.itemsPath ?? ""}
+                      onChange={(e) => patch({ trigger: { ...flow.trigger, itemsPath: e.target.value } })}
+                      placeholder="list field (blank = whole reply)"
+                      className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                      style={inputStyle}
+                    />
+                    <input
+                      value={flow.trigger.idPath ?? "id"}
+                      onChange={(e) => patch({ trigger: { ...flow.trigger, idPath: e.target.value } })}
+                      placeholder="id field"
+                      className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                      style={inputStyle}
+                    />
+                  </div>
+                </details>
               </div>
-              <p className="sm:col-span-2 font-mono text-[0.62rem]" style={{ color: "var(--color-muted)" }}>
-                First poll primes the seen-set without firing; each genuinely new item then runs the flow once (item = <code>{"{{trigger.*}}"}</code>).
-                {flow.pollState?.lastDetail ? ` Last poll: ${flow.pollState.lastDetail}.` : ""}
+              <p className="sm:col-span-2 text-xs" style={{ color: "var(--color-muted)" }}>
+                NodeWorm checks on a timer and runs this once for each new thing it finds. It ignores what was already there the first time, so you don&apos;t get flooded.
+                {flow.pollState?.lastDetail ? ` Last check: ${flow.pollState.lastDetail}.` : ""}
               </p>
             </div>
           )}
@@ -485,7 +539,7 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
                 step={s}
                 index={i}
                 total={flow.steps.length}
-                connectionOptions={connectionOptions}
+                connections={connections}
                 catalogs={catalogs}
                 onChange={(p) => patchStep(s.id, p)}
                 onMove={(d) => moveStep(s.id, d)}
@@ -498,11 +552,11 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
           ))}
 
           <div className="pt-4 pb-2">
-            <div className="font-mono text-[0.62rem] uppercase tracking-wider mb-2" style={{ color: "var(--color-muted)" }}>
-              add a step
+            <div className="font-display font-bold text-sm mb-2" style={{ color: "var(--color-ink-soft)" }}>
+              Then, add a step
             </div>
             <div className="flex flex-wrap gap-2">
-              {STEP_TYPES.map((t) => (
+              {PRIMARY_STEP_TYPES.map((t) => (
                 <button
                   key={t}
                   onClick={() => {
@@ -510,13 +564,34 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
                     setDirty(true);
                   }}
                   title={STEP_BLURBS[t]}
-                  className="inline-flex items-center gap-2 font-mono text-xs px-3 py-2 rounded-lg transition-transform hover:-translate-y-0.5"
+                  className="inline-flex items-center gap-2 text-sm px-3.5 py-2 rounded-lg transition-transform hover:-translate-y-0.5"
                   style={{ border: `1px solid color-mix(in srgb, ${STEP_COLORS[t]} 45%, transparent)`, color: "var(--color-ink-soft)" }}
                 >
                   <span className="dot" style={{ width: 8, height: 8, background: STEP_COLORS[t] }} />
                   {STEP_LABELS[t]}
                 </button>
               ))}
+              {showAdvancedSteps ? (
+                ADVANCED_STEP_TYPES.map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => {
+                      setFlow((f) => ({ ...f, steps: [...f.steps, freshStep(t)] }));
+                      setDirty(true);
+                    }}
+                    title={STEP_BLURBS[t]}
+                    className="inline-flex items-center gap-2 text-sm px-3.5 py-2 rounded-lg transition-transform hover:-translate-y-0.5"
+                    style={{ border: `1px solid color-mix(in srgb, ${STEP_COLORS[t]} 45%, transparent)`, color: "var(--color-ink-soft)" }}
+                  >
+                    <span className="dot" style={{ width: 8, height: 8, background: STEP_COLORS[t] }} />
+                    {STEP_LABELS[t]}
+                  </button>
+                ))
+              ) : (
+                <button onClick={() => setShowAdvancedSteps(true)} className="text-sm px-3.5 py-2 rounded-lg" style={{ color: "var(--color-muted)", border: "1px dashed var(--color-line-2)" }}>
+                  More step types
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -528,29 +603,29 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
           <button
             onClick={() => patch({ enabled: !flow.enabled })}
             className="btn btn-ghost"
-            title={flow.enabled ? "Pause: webhook + schedule triggers stop firing" : "Resume triggers"}
+            title={flow.enabled ? "Pause: this automation stops running automatically" : "Turn it back on"}
           >
-            {flow.enabled ? "Pause flow" : "Resume flow"}
+            {flow.enabled ? "Turn off" : "Turn on"}
           </button>
           {ws?.signedIn && ws.workspaces.length > 0 && flow.userId === ws.userId && (
             <select
               value={flow.workspaceId ?? ""}
               onChange={(e) => shareTo(e.target.value)}
-              title="Share this flow with a workspace; members can view, edit and run it"
-              className="rounded-lg px-3 py-2 font-mono text-xs outline-none"
+              title="Share this automation with your team; members can view, edit and run it"
+              className="rounded-lg px-3 py-2 text-sm outline-none"
               style={inputStyle}
             >
-              <option value="">private</option>
+              <option value="">Just me</option>
               {ws.workspaces.map((w) => (
                 <option key={w.id} value={w.id}>
-                  shared: {w.name}
+                  Shared with {w.name}
                 </option>
               ))}
             </select>
           )}
           <span className="flex-1" />
-          <button onClick={remove} className="font-mono text-xs px-2.5 py-1.5 rounded-lg" style={{ color: "var(--color-blocked)", border: "1px solid var(--color-line)" }}>
-            delete flow
+          <button onClick={remove} className="text-sm px-2.5 py-1.5 rounded-lg" style={{ color: "var(--color-blocked)", border: "1px solid var(--color-line)" }}>
+            Delete
           </button>
         </div>
       </div>
@@ -558,8 +633,14 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
       {/* Run panel */}
       <div className="space-y-5">
         <div className="card-pop p-5">
-          <div className="kicker mb-3">test bench</div>
-          <Field label="trigger payload (JSON)">
+          <div className="font-display font-bold text-base mb-1">Try it out</div>
+          <p className="text-xs mb-3" style={{ color: "var(--color-muted)" }}>
+            Run it once with example data to see what happens, before it goes live.
+          </p>
+          <details>
+            <summary className="text-xs cursor-pointer mb-2" style={{ color: "var(--color-muted)" }}>
+              Example data (advanced)
+            </summary>
             <textarea
               value={testPayload}
               onChange={(e) => setTestPayload(e.target.value)}
@@ -567,22 +648,22 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
               className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none resize-y"
               style={inputStyle}
             />
-          </Field>
+          </details>
           <button onClick={runNow} disabled={running || flow.steps.length === 0} className="btn btn-signal w-full mt-3">
-            {running ? "running..." : "⚡ Run now"}
+            {running ? "running..." : "▶ Test run"}
           </button>
           {flow.steps.length === 0 && (
-            <p className="font-mono text-[0.62rem] mt-2" style={{ color: "var(--color-muted)" }}>
+            <p className="text-[0.7rem] mt-2" style={{ color: "var(--color-muted)" }}>
               Add at least one step first.
             </p>
           )}
         </div>
 
         <div className="card p-5">
-          <div className="kicker mb-3">runs</div>
+          <div className="font-display font-bold text-base mb-3">History</div>
           {runs.length === 0 ? (
-            <p className="font-mono text-xs" style={{ color: "var(--color-muted)" }}>
-              No runs yet. Fire the trigger or press Run now.
+            <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+              Nothing has run yet. Press Test run above, or wait for the trigger.
             </p>
           ) : (
             <div className="space-y-3">
@@ -601,7 +682,7 @@ function StepCard({
   step,
   index,
   total,
-  connectionOptions,
+  connections,
   catalogs,
   onChange,
   onMove,
@@ -611,7 +692,7 @@ function StepCard({
   step: FlowStep;
   index: number;
   total: number;
-  connectionOptions: React.ReactNode;
+  connections: Integration[];
   catalogs: Record<string, Catalog>;
   onChange: (p: Partial<FlowStep>) => void;
   onMove: (d: -1 | 1) => void;
@@ -619,11 +700,16 @@ function StepCard({
   insideBranch?: boolean;
 }) {
   const [open, setOpen] = useState(true);
+  const [showAllConns, setShowAllConns] = useState(false);
   const color = STEP_COLORS[step.type];
   const catalog = step.integrationId ? catalogs[step.integrationId] : undefined;
   const usesConnection = step.type === "http" || step.type === "connector" || step.type === "mcp";
   const usesBody = step.type === "http" || step.type === "connector" || step.type === "webhook-out";
   const isEffect = step.type !== "filter" && step.type !== "branch";
+
+  const wantApp = step.appName?.trim().toLowerCase();
+  const hasMatch = wantApp ? connections.some((c) => c.appName.trim().toLowerCase() === wantApp) : true;
+  const connOptions = connectionOptionsFor(connections, step.appName, showAllConns || !hasMatch);
 
   function applyAction(name: string) {
     const a = catalog?.actions.find((x) => x.name === name);
@@ -638,7 +724,7 @@ function StepCard({
   return (
     <div className={insideBranch ? "card p-3" : "card p-4"} style={{ borderColor: `color-mix(in srgb, ${color} 30%, var(--color-line))` }}>
       <div className="flex items-center gap-3">
-        <span className="font-mono text-[0.62rem] uppercase tracking-wider px-2 py-0.5 rounded" style={{ color, border: `1px solid color-mix(in srgb, ${color} 45%, transparent)` }}>
+        <span className="text-[0.66rem] px-2 py-0.5 rounded font-semibold" style={{ color, border: `1px solid color-mix(in srgb, ${color} 45%, transparent)` }}>
           {STEP_LABELS[step.type]}
         </span>
         <input
@@ -648,14 +734,14 @@ function StepCard({
           style={{ color: "var(--color-ink)" }}
           aria-label="Step name"
         />
-        <div className="flex items-center gap-1 font-mono text-xs" style={{ color: "var(--color-muted)" }}>
+        <div className="flex items-center gap-1 text-sm" style={{ color: "var(--color-muted)" }}>
           <button onClick={() => onMove(-1)} disabled={index === 0} className="px-1.5 py-0.5 rounded disabled:opacity-30" aria-label="Move up">
             ↑
           </button>
           <button onClick={() => onMove(1)} disabled={index === total - 1} className="px-1.5 py-0.5 rounded disabled:opacity-30" aria-label="Move down">
             ↓
           </button>
-          <button onClick={() => setOpen((o) => !o)} className="px-1.5 py-0.5 rounded" aria-label="Toggle step config">
+          <button onClick={() => setOpen((o) => !o)} className="px-1.5 py-0.5 rounded" aria-label="Toggle step settings">
             {open ? "−" : "+"}
           </button>
           <button onClick={onRemove} className="px-1.5 py-0.5 rounded" style={{ color: "var(--color-blocked)" }} aria-label="Remove step">
@@ -667,42 +753,65 @@ function StepCard({
       {open && (
         <div className="mt-3 grid sm:grid-cols-2 gap-3">
           {usesConnection && (
-            <Field label="connection">
-              <select
-                value={step.integrationId ?? ""}
-                onChange={(e) => onChange({ integrationId: e.target.value || undefined })}
-                className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
-                style={inputStyle}
-              >
-                <option value="">{step.appName ? `pick your ${step.appName} connection...` : "no connection (unauthenticated)"}</option>
-                {connectionOptions}
-              </select>
-            </Field>
+            <div className="sm:col-span-2">
+              <Field label={step.appName ? `Which ${step.appName} account` : "Which account"}>
+                <select
+                  value={step.integrationId ?? ""}
+                  onChange={(e) => onChange({ integrationId: e.target.value || undefined })}
+                  className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                  style={inputStyle}
+                >
+                  <option value="">{step.appName ? `Choose your ${step.appName} account...` : "No account needed"}</option>
+                  {connOptions}
+                </select>
+              </Field>
+              {step.appName && !hasMatch && (
+                <p className="text-xs mt-1.5" style={{ color: "var(--color-ink-soft)" }}>
+                  No {step.appName} account connected yet.{" "}
+                  <Link href="/integrations" className="underline decoration-dotted font-semibold" style={{ color: "var(--color-signal)" }}>
+                    Connect {step.appName}
+                  </Link>
+                  , then choose it here.
+                </p>
+              )}
+              {step.appName && hasMatch && !showAllConns && (
+                <button onClick={() => setShowAllConns(true)} className="text-[0.7rem] mt-1.5" style={{ color: "var(--color-muted)" }}>
+                  Show all accounts
+                </button>
+              )}
+            </div>
           )}
 
           {step.type === "http" && step.integrationId && (
-            <Field label={`real operations ${CATALOG_SOURCE_LABEL[catalog?.source ?? "none"] ?? ""}`}>
-              <select
-                value=""
-                onChange={(e) => applyAction(e.target.value)}
-                disabled={!catalog || catalog.source === "loading" || catalog.actions.length === 0}
-                className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
-                style={inputStyle}
-              >
-                <option value="">
-                  {!catalog || catalog.source === "loading"
-                    ? "discovering operations..."
-                    : catalog.actions.length
-                      ? `prefill from ${catalog.actions.length} discovered operation(s)...`
-                      : "none discovered; configure manually"}
-                </option>
-                {catalog?.actions.map((a) => (
-                  <option key={`${a.method} ${a.path}`} value={a.name}>
-                    {a.method} {a.path} {a.summary ? `· ${a.summary}` : ""}
+            <div className="sm:col-span-2">
+              <Field label="What should it do?">
+                <select
+                  value=""
+                  onChange={(e) => applyAction(e.target.value)}
+                  disabled={!catalog || catalog.source === "loading" || catalog.actions.length === 0}
+                  className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                  style={inputStyle}
+                >
+                  <option value="">
+                    {!catalog || catalog.source === "loading"
+                      ? "finding available actions..."
+                      : catalog.actions.length
+                        ? `Choose from ${catalog.actions.length} available action${catalog.actions.length === 1 ? "" : "s"}...`
+                        : "No ready-made actions; set it up under Advanced"}
                   </option>
-                ))}
-              </select>
-            </Field>
+                  {catalog?.actions.map((a) => (
+                    <option key={`${a.method} ${a.path}`} value={a.name}>
+                      {a.summary ? a.summary : `${a.method} ${a.path}`}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              {catalog && catalog.source !== "loading" && catalog.actions.length > 0 && (
+                <p className="text-[0.7rem] mt-1" style={{ color: "var(--color-muted)" }}>
+                  Picked up {CATALOG_SOURCE_LABEL[catalog.source] ?? "from the app"}.
+                </p>
+              )}
+            </div>
           )}
 
           {step.type === "mcp" && (
@@ -712,10 +821,10 @@ function StepCard({
                   <select
                     value={step.tool ?? ""}
                     onChange={(e) => onChange({ tool: e.target.value || undefined })}
-                    className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                    className="w-full rounded-lg px-3 py-2 text-sm outline-none"
                     style={inputStyle}
                   >
-                    <option value="">pick a live tool...</option>
+                    <option value="">Choose a tool...</option>
                     {catalog.mcpTools.map((t) => (
                       <option key={t.name} value={t.name} title={t.description}>
                         {t.name}
@@ -726,14 +835,14 @@ function StepCard({
                   <input
                     value={step.tool ?? ""}
                     onChange={(e) => onChange({ tool: e.target.value })}
-                    placeholder={step.integrationId ? "no live tools found; type a tool name" : "pick a connection first"}
+                    placeholder={step.integrationId ? "type a tool name" : "choose an account first"}
                     className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
                     style={inputStyle}
                   />
                 )}
               </Field>
               <div className="sm:col-span-2">
-                <Field label="tool arguments (JSON template)">
+                <Field label="what to send (advanced)">
                   <textarea
                     value={step.body ?? ""}
                     onChange={(e) => onChange({ body: e.target.value })}
@@ -747,72 +856,27 @@ function StepCard({
             </>
           )}
 
-          {(step.type === "http" || step.type === "webhook-out") && (
-            <Field label="url">
-              <input
-                value={step.url ?? ""}
-                onChange={(e) => onChange({ url: e.target.value })}
-                placeholder="https://api.example.com/v1/things"
-                className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
-                style={inputStyle}
-              />
-            </Field>
-          )}
-
-          {step.type === "connector" && (
-            <Field label="path on your connector">
-              <input
-                value={step.path ?? ""}
-                onChange={(e) => onChange({ path: e.target.value })}
-                placeholder="/v2/send"
-                className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
-                style={inputStyle}
-              />
-            </Field>
-          )}
-
-          {usesBody && (
-            <>
-              <Field label="method">
-                <select value={step.method ?? "POST"} onChange={(e) => onChange({ method: e.target.value })} className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none" style={inputStyle}>
-                  {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => (
-                    <option key={m}>{m}</option>
-                  ))}
-                </select>
-              </Field>
-              <div className="sm:col-span-2">
-                <Field label="body template (JSON, {{trigger.x}} and {{steps.<id>.output.x}} interpolate)">
-                  <textarea
-                    value={step.body ?? ""}
-                    onChange={(e) => onChange({ body: e.target.value })}
-                    rows={3}
-                    placeholder='{"text": "New payment: {{trigger.amount}}"}'
-                    className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none resize-y"
-                    style={inputStyle}
-                  />
-                </Field>
-              </div>
-            </>
-          )}
-
           {step.type === "ai" && (
             <div className="sm:col-span-2">
-              <Field label="instruction (templates interpolate)">
+              <Field label="What should AI do?">
                 <textarea
                   value={step.prompt ?? ""}
                   onChange={(e) => onChange({ prompt: e.target.value })}
                   rows={3}
-                  placeholder="Summarise this order for a Slack message: {{trigger.order}}"
-                  className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none resize-y"
+                  placeholder="Write a short, friendly summary of this order for the team."
+                  className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-y"
                   style={inputStyle}
                 />
               </Field>
+              <p className="text-[0.7rem] mt-1" style={{ color: "var(--color-muted)" }}>
+                Tip: type <code>{"{{"}</code> to pull in data from the trigger, e.g. {"{{trigger.email}}"}.
+              </p>
             </div>
           )}
 
           {step.type === "filter" && step.condition && (
             <>
-              <Field label="value">
+              <Field label="Only continue if this value">
                 <input
                   value={step.condition.left}
                   onChange={(e) => onChange({ condition: { ...step.condition!, left: e.target.value } })}
@@ -822,25 +886,28 @@ function StepCard({
                 />
               </Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="op">
+                <Field label="is">
                   <select
                     value={step.condition.op}
                     onChange={(e) => onChange({ condition: { ...step.condition!, op: e.target.value as ConditionOp } })}
-                    className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                    className="w-full rounded-lg px-3 py-2 text-sm outline-none"
                     style={inputStyle}
                   >
-                    {OPS.map((o) => (
-                      <option key={o}>{o}</option>
-                    ))}
+                    <option value="eq">equal to</option>
+                    <option value="neq">not equal to</option>
+                    <option value="contains">contains</option>
+                    <option value="exists">present</option>
+                    <option value="gt">greater than</option>
+                    <option value="lt">less than</option>
                   </select>
                 </Field>
                 {step.condition.op !== "exists" && (
-                  <Field label="compare to">
+                  <Field label="this">
                     <input
                       value={step.condition.right ?? ""}
                       onChange={(e) => onChange({ condition: { ...step.condition!, right: e.target.value } })}
                       placeholder="100"
-                      className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                      className="w-full rounded-lg px-3 py-2 text-sm outline-none"
                       style={inputStyle}
                     />
                   </Field>
@@ -849,32 +916,86 @@ function StepCard({
             </>
           )}
 
-          {isEffect && (
-            <div className="flex flex-wrap gap-4 sm:col-span-2">
-              <Field label="retries">
-                <select
-                  value={step.retries ?? 0}
-                  onChange={(e) => onChange({ retries: Number(e.target.value) || undefined })}
-                  className="rounded-lg px-3 py-2 font-mono text-xs outline-none"
-                  style={inputStyle}
-                >
-                  <option value={0}>none</option>
-                  <option value={1}>1 retry</option>
-                  <option value={2}>2 retries</option>
-                </select>
-              </Field>
-              <Field label="on failure">
-                <select
-                  value={step.onError ?? "halt"}
-                  onChange={(e) => onChange({ onError: e.target.value === "continue" ? "continue" : undefined })}
-                  className="rounded-lg px-3 py-2 font-mono text-xs outline-none"
-                  style={inputStyle}
-                >
-                  <option value="halt">stop the run</option>
-                  <option value="continue">continue (run marked partial)</option>
-                </select>
-              </Field>
-            </div>
+          {(usesBody || isEffect) && (
+            <details className="sm:col-span-2">
+              <summary className="text-xs cursor-pointer" style={{ color: "var(--color-muted)" }}>
+                Advanced settings
+              </summary>
+              <div className="mt-2 grid sm:grid-cols-2 gap-3">
+                {(step.type === "http" || step.type === "webhook-out") && (
+                  <Field label="web address">
+                    <input
+                      value={step.url ?? ""}
+                      onChange={(e) => onChange({ url: e.target.value })}
+                      placeholder="https://api.example.com/v1/things"
+                      className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                      style={inputStyle}
+                    />
+                  </Field>
+                )}
+                {step.type === "connector" && (
+                  <Field label="path on your connector">
+                    <input
+                      value={step.path ?? ""}
+                      onChange={(e) => onChange({ path: e.target.value })}
+                      placeholder="/v2/send"
+                      className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                      style={inputStyle}
+                    />
+                  </Field>
+                )}
+                {usesBody && (
+                  <>
+                    <Field label="method">
+                      <select value={step.method ?? "POST"} onChange={(e) => onChange({ method: e.target.value })} className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none" style={inputStyle}>
+                        {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => (
+                          <option key={m}>{m}</option>
+                        ))}
+                      </select>
+                    </Field>
+                    <div className="sm:col-span-2">
+                      <Field label="what to send (JSON; {{trigger.x}} pulls in data)">
+                        <textarea
+                          value={step.body ?? ""}
+                          onChange={(e) => onChange({ body: e.target.value })}
+                          rows={3}
+                          placeholder='{"text": "New payment: {{trigger.amount}}"}'
+                          className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none resize-y"
+                          style={inputStyle}
+                        />
+                      </Field>
+                    </div>
+                  </>
+                )}
+                {isEffect && (
+                  <div className="flex flex-wrap gap-4 sm:col-span-2">
+                    <Field label="if it fails, try again">
+                      <select
+                        value={step.retries ?? 0}
+                        onChange={(e) => onChange({ retries: Number(e.target.value) || undefined })}
+                        className="rounded-lg px-3 py-2 text-sm outline-none"
+                        style={inputStyle}
+                      >
+                        <option value={0}>don&apos;t retry</option>
+                        <option value={1}>retry once</option>
+                        <option value={2}>retry twice</option>
+                      </select>
+                    </Field>
+                    <Field label="if it still fails">
+                      <select
+                        value={step.onError ?? "halt"}
+                        onChange={(e) => onChange({ onError: e.target.value === "continue" ? "continue" : undefined })}
+                        className="rounded-lg px-3 py-2 text-sm outline-none"
+                        style={inputStyle}
+                      >
+                        <option value="halt">stop here</option>
+                        <option value="continue">keep going anyway</option>
+                      </select>
+                    </Field>
+                  </div>
+                )}
+              </div>
+            </details>
           )}
 
           {step.type === "branch" && (
@@ -948,7 +1069,7 @@ function StepCard({
                         step={inner}
                         index={ii}
                         total={b.steps.length}
-                        connectionOptions={connectionOptions}
+                        connections={connections}
                         catalogs={catalogs}
                         insideBranch
                         onChange={(p) => patchBranch(b.id, { steps: b.steps.map((x) => (x.id === inner.id ? { ...x, ...p } : x)) })}

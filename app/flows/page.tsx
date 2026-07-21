@@ -13,18 +13,18 @@ export default async function FlowsPage() {
     <div className="mx-auto max-w-5xl px-5 py-12">
       <div className="flex flex-wrap items-end justify-between gap-4 mb-8">
         <div>
-          <div className="kicker mb-2">automation layer</div>
+          <div className="kicker mb-2">automations</div>
           <h1 className="display-xl text-[clamp(2.2rem,5vw,3.4rem)]">
-            Flows<span className="gradient-text">.</span>
+            Put your apps on autopilot<span className="gradient-text">.</span>
           </h1>
           <p className="mt-2 max-w-xl text-sm" style={{ color: "var(--color-ink-soft)" }}>
-            Multi-step automations over your connections: a trigger, filters, AI steps and real actions. Describe one in
-            plain language and NodeWorm drafts it.
+            Tell NodeWorm what you want (&ldquo;when this happens, do that&rdquo;) and it builds the automation for you.
+            No code, no copy-pasting between apps.
           </p>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Stat label="live" value={live} color="var(--color-live)" />
-          <Stat label="paused" value={paused} color="var(--color-amber)" />
+          <Stat label="on" value={live} color="var(--color-live)" />
+          <Stat label="off" value={paused} color="var(--color-amber)" />
         </div>
       </div>
 

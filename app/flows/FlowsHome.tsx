@@ -6,7 +6,7 @@ import { useState } from "react";
 import { timeAgo } from "@/app/components/status";
 import { TEMPLATES } from "@/lib/flow/templates";
 import type { Flow } from "@/lib/flow/types";
-import { STEP_COLORS, TRIGGER_LABEL } from "./meta";
+import { STEP_COLORS, TRIGGER_CHIP, TRIGGER_LABEL } from "./meta";
 
 const EXAMPLES = [
   "When a Stripe payment succeeds, add a row in Notion and message Slack",
@@ -82,30 +82,33 @@ export function FlowsHome({ initial }: { initial: Flow[] }) {
   return (
     <div className="space-y-8">
       <div className="card-pop p-6 sm:p-8">
-        <div className="kicker mb-3">describe it, NodeWorm drafts it</div>
+        <div className="font-display font-bold text-lg mb-1">Describe what you want, in plain English</div>
+        <p className="text-sm mb-3" style={{ color: "var(--color-muted)" }}>
+          NodeWorm builds the automation for you. Edit anything afterward.
+        </p>
         <div className="flex flex-col sm:flex-row gap-3">
           <input
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && draft()}
-            placeholder="When a payment succeeds in Stripe, add a row in Notion..."
+            placeholder="When a payment comes in on Stripe, add a row to my Notion..."
             className="flex-1 rounded-xl px-4 py-3.5 text-[0.95rem] outline-none"
             style={{ background: "var(--color-paper-2)", border: "1px solid var(--color-line-2)", color: "var(--color-ink)" }}
           />
           <button onClick={draft} disabled={busy || !prompt.trim()} className="btn btn-signal whitespace-nowrap">
-            {busy ? "drafting..." : "Draft this flow"}
+            {busy ? "building..." : "Build it for me"}
           </button>
         </div>
 
         {notice && (
           <div
-            className="mt-4 rounded-xl px-4 py-3 font-mono text-xs"
+            className="mt-4 rounded-xl px-4 py-3 text-sm"
             style={{
               border: `1px solid color-mix(in srgb, ${notice.kind === "clarify" ? "var(--color-amber)" : "var(--color-blocked)"} 45%, transparent)`,
               color: "var(--color-ink-soft)",
             }}
           >
-            {notice.kind === "clarify" ? "One question first: " : ""}
+            {notice.kind === "clarify" ? "Quick question: " : ""}
             {notice.text}
           </div>
         )}
@@ -115,7 +118,7 @@ export function FlowsHome({ initial }: { initial: Flow[] }) {
             <button
               key={ex}
               onClick={() => setPrompt(ex)}
-              className="font-mono text-[0.66rem] px-2.5 py-1.5 rounded-lg text-left transition-colors hover:underline decoration-dotted"
+              className="text-xs px-2.5 py-1.5 rounded-lg text-left transition-colors hover:underline decoration-dotted"
               style={{ color: "var(--color-muted)", border: "1px solid var(--color-line)" }}
             >
               {ex}
@@ -125,7 +128,7 @@ export function FlowsHome({ initial }: { initial: Flow[] }) {
       </div>
 
       <div>
-        <div className="kicker mb-4">or start from a template</div>
+        <div className="font-display font-bold text-base mb-4">Or pick a ready-made template</div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {TEMPLATES.map((t, i) => (
             <button
@@ -157,16 +160,16 @@ export function FlowsHome({ initial }: { initial: Flow[] }) {
 
       <div>
         <div className="flex items-center justify-between mb-4">
-          <span className="kicker">your flows</span>
+          <span className="font-display font-bold text-base">Your automations</span>
           <button onClick={blank} className="btn btn-ghost text-sm">
-            Start blank
+            Start from scratch
           </button>
         </div>
 
         {flows.length === 0 ? (
           <div className="card p-12 text-center wires">
-            <p className="font-mono text-sm" style={{ color: "var(--color-muted)" }}>
-              No flows yet. Describe one above and watch it assemble.
+            <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+              Nothing here yet. Describe one above and watch it build itself.
             </p>
           </div>
         ) : (
@@ -178,37 +181,37 @@ export function FlowsHome({ initial }: { initial: Flow[] }) {
                     <div className="font-display font-bold text-lg leading-tight group-hover:underline decoration-dotted">
                       {f.name}
                     </div>
-                    <div className="mt-1 flex items-center gap-2 font-mono text-xs" style={{ color: "var(--color-muted)" }}>
-                      <span>{TRIGGER_LABEL[f.trigger.type]}</span>
+                    <div className="mt-1 flex items-center gap-2 text-xs" style={{ color: "var(--color-muted)" }}>
+                      <span>{TRIGGER_CHIP[f.trigger.type]}</span>
                       <span>·</span>
                       <span className="inline-flex items-center gap-1">
                         {f.steps.slice(0, 6).map((s) => (
                           <span key={s.id} className="dot" style={{ width: 7, height: 7, background: STEP_COLORS[s.type] }} />
                         ))}
-                        {f.steps.length === 0 ? "no steps yet" : `${f.steps.length} step${f.steps.length === 1 ? "" : "s"}`}
+                        {f.steps.length === 0 ? "nothing to do yet" : `${f.steps.length} step${f.steps.length === 1 ? "" : "s"}`}
                       </span>
                     </div>
                   </Link>
 
-                  <span className="font-mono text-[0.66rem] hidden sm:block" style={{ color: "var(--color-muted)" }}>
-                    {f.lastRunAt ? `ran ${timeAgo(f.lastRunAt, now)}` : "never run"}
+                  <span className="text-[0.7rem] hidden sm:block" style={{ color: "var(--color-muted)" }}>
+                    {f.lastRunAt ? `last ran ${timeAgo(f.lastRunAt, now)}` : "not run yet"}
                   </span>
 
                   {f.workspaceId && (
-                    <span className="chip" title="Shared with a workspace">
+                    <span className="chip" title="Shared with your team">
                       <span className="dot" style={{ background: "var(--color-aqua)" }} />
                       shared
                     </span>
                   )}
                   <span className="chip">
                     <span className="dot" style={{ background: f.enabled ? "var(--color-live)" : "var(--color-amber)" }} />
-                    {f.enabled ? "live" : "paused"}
+                    {f.enabled ? "on" : "off"}
                   </span>
 
                   <button
                     onClick={() => remove(f.id)}
                     aria-label={`Delete ${f.name}`}
-                    className="font-mono text-xs px-2.5 py-1.5 rounded-lg transition-colors"
+                    className="text-xs px-2.5 py-1.5 rounded-lg transition-colors"
                     style={{ color: "var(--color-muted)", border: "1px solid var(--color-line)" }}
                   >
                     remove
