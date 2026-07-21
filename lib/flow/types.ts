@@ -21,6 +21,16 @@ export interface FlowTrigger {
   // Webhook secret in the hook URL. Server-only: redacted before the client on
   // generic reads; the dedicated owner GET returns the full URL.
   token?: string;
+  // Result of auto-registering the hook URL inside the source app (server-held,
+  // never client-set). Absent until a registration is attempted.
+  registration?: {
+    state: "registered" | "failed";
+    via: "curated" | "discovered";
+    id?: string;
+    deleteUrl?: string;
+    detail: string;
+    at: number;
+  };
 }
 
 export type FlowStepType = "http" | "connector" | "ai" | "filter" | "webhook-out" | "mcp" | "branch";

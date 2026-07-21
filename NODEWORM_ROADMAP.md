@@ -94,8 +94,18 @@ Third increment same day (engine v2 + gallery):
   server-side against existing connections (same honest needsConnections seam), strip on
   /flows, `POST /api/flows {template}`.
 
-**Still deferred (deliberate):** team workspaces, per-app trigger event catalogs
-(webhook auto-registration in the source app), parallel/nested paths beyond one level.
+Fourth increment (2026-07-22): **webhook auto-registration DONE.** NodeWorm registers the
+flow's hook URL inside the source app itself, as the user's connection (vault token), down
+an honest ladder: curated recipe (stripe form-encoded, github, shopify, typeform; params
+surfaced as one-field seams) -> discovered webhooky operation from the endpoint ladder
+(POST/PUT path matching webhook/subscription, url key from observed bodyKeys) -> manual
+copy fallback. `lib/flow/hookreg.ts` pure (8 tests), `/api/flows/[id]/register-hook`
+GET availability / POST register / DELETE un-register (deleteUrl captured at registration),
+server-held `trigger.registration`, builder UI (register button, param inputs, registered
+chip + un-register). Verified: availability probe live (stripe curated), tokenless attempt
+refuses honestly, request building unit-proven incl. form encoding + param substitution.
+
+**Still deferred (deliberate):** team workspaces, parallel/nested paths beyond one level.
 
 ## Sequencing rationale
 0 unlocks six built tiers for the cost of three env vars. 1 before 2 because the flagship loop needs durable artifacts between serverless invocations. 2 is the product's flagship moment and the demo that sells it. 3 broadens who can run it and retires the honest-open security items. 4 turns a generator into a self-maintaining platform. 5 is a refactor with regression risk, so it goes last on top of frozen behavior.

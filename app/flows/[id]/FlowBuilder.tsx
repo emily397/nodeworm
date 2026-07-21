@@ -76,6 +76,15 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
   const [testPayload, setTestPayload] = useState('{\n  "example": "value"\n}');
   const [copied, setCopied] = useState(false);
   const [catalogs, setCatalogs] = useState<Record<string, Catalog>>({});
+  const [reg, setReg] = useState<{
+    mode: "curated" | "discovered" | "none";
+    params: Array<{ key: string; label: string; example: string }>;
+    detail: string;
+    registration: NonNullable<Flow["trigger"]["registration"]> | null;
+  } | null>(null);
+  const [regParams, setRegParams] = useState<Record<string, string>>({});
+  const [regBusy, setRegBusy] = useState(false);
+  const [regError, setRegError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/integrations")
@@ -87,6 +96,44 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
       .then((d) => setHookUrl(d.hookUrl ?? null))
       .catch(() => {});
   }, [initial.id]);
+
+  // Probe how this webhook could be auto-registered in the source app.
+  useEffect(() => {
+    if (flow.trigger.type !== "webhook" || !flow.trigger.integrationId) {
+      setReg(null);
+      return;
+    }
+    fetch(`/api/flows/${initial.id}/register-hook`)
+      .then((r) => r.json())
+      .then((d) => setReg(d.mode ? d : null))
+      .catch(() => setReg(null));
+  }, [initial.id, flow.trigger.type, flow.trigger.integrationId]);
+
+  async function registerHook() {
+    if (regBusy) return;
+    setRegBusy(true);
+    setRegError(null);
+    try {
+      const d = await fetch(`/api/flows/${initial.id}/register-hook`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ params: regParams }),
+      }).then((r) => r.json());
+      if (d.registration) setReg((p) => (p ? { ...p, registration: d.registration } : p));
+      else if (d.error) setRegError(d.error);
+    } catch {
+      setRegError("registration attempt failed to send");
+    }
+    setRegBusy(false);
+  }
+
+  async function unregisterHook() {
+    if (regBusy) return;
+    setRegBusy(true);
+    await fetch(`/api/flows/${initial.id}/register-hook`, { method: "DELETE" }).catch(() => {});
+    setReg((p) => (p ? { ...p, registration: null } : p));
+    setRegBusy(false);
+  }
 
   // Lazily fetch the action catalog for every connection any step references.
   useEffect(() => {
@@ -272,8 +319,49 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
               <button onClick={copyHook} className="btn btn-ghost text-xs" disabled={!hookUrl}>
                 {copied ? "copied" : "copy"}
               </button>
+              {reg && reg.mode !== "none" && (
+                <div className="w-full rounded-xl px-3 py-2.5 space-y-2" style={{ border: "1px dashed var(--color-line-2)" }}>
+                  {reg.registration?.state === "registered" ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="chip">
+                        <span className="dot" style={{ background: "var(--color-live)" }} />
+                        registered{reg.registration.id ? ` · ${reg.registration.id}` : ""}
+                      </span>
+                      <span className="font-mono text-[0.62rem] flex-1" style={{ color: "var(--color-muted)" }}>
+                        {reg.registration.detail}
+                      </span>
+                      <button onClick={unregisterHook} disabled={regBusy} className="font-mono text-xs px-2 py-1 rounded-lg" style={{ color: "var(--color-muted)", border: "1px solid var(--color-line)" }}>
+                        un-register
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {reg.params.map((p) => (
+                        <input
+                          key={p.key}
+                          value={regParams[p.key] ?? ""}
+                          onChange={(e) => setRegParams((v) => ({ ...v, [p.key]: e.target.value }))}
+                          placeholder={`${p.label} (${p.example})`}
+                          className="flex-1 min-w-[160px] rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                          style={inputStyle}
+                        />
+                      ))}
+                      <button onClick={registerHook} disabled={regBusy} className="btn btn-signal text-xs whitespace-nowrap">
+                        {regBusy ? "registering..." : `⚡ Register in ${flow.trigger.appName ?? "the app"}`}
+                      </button>
+                      <span className="w-full font-mono text-[0.62rem]" style={{ color: "var(--color-muted)" }}>
+                        {reg.detail}
+                        {reg.registration?.state === "failed" ? ` · last attempt: ${reg.registration.detail}` : ""}
+                        {regError ? ` · ${regError}` : ""}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
               <span className="w-full font-mono text-[0.62rem]" style={{ color: "var(--color-muted)" }}>
-                Register this URL in the source app; NodeWorm answers its verification challenge automatically.
+                {reg?.registration?.state === "registered"
+                  ? "NodeWorm registered this URL inside the app for you."
+                  : "Or register this URL in the source app yourself; NodeWorm answers its verification challenge automatically."}
               </span>
             </div>
           )}

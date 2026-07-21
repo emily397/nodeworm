@@ -97,6 +97,7 @@ function sanitizeTrigger(v: unknown, existing: FlowTrigger): FlowTrigger {
     appName: str(t.appName) ?? existing.appName,
     event: str(t.event) ?? existing.event,
     token: existing.token, // server-held; never client-set
+    registration: existing.registration, // server-held; never client-set
   };
   if (type === "schedule" || type === "poll") {
     const mins = Number(t.scheduleMins ?? existing.scheduleMins ?? 60);
