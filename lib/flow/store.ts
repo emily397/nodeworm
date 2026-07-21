@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 import { neon } from "@neondatabase/serverless";
 import { authAvailable, currentUserId } from "../engine/auth";
+import { isMember } from "../engine/workspaces";
 import type { Flow, FlowRun } from "./types";
 
 const sql = process.env.DATABASE_URL ? neon(process.env.DATABASE_URL) : null;
@@ -85,11 +86,17 @@ export async function getFlow(id: string): Promise<Flow | undefined> {
 }
 
 // Ownership-scoped fetch, mirroring getOwnedIntegration: with accounts on, an
-// owned flow is only reachable by its owner (route answers 404 otherwise).
+// owned flow is reachable by its owner or a member of the workspace it is
+// shared into (route answers 404 otherwise).
 export async function getOwnedFlow(req: Request, id: string): Promise<Flow | undefined> {
   const f = await getFlow(id);
   if (!f) return undefined;
-  if (authAvailable() && f.userId && f.userId !== (await currentUserId(req))) return undefined;
+  if (authAvailable() && f.userId) {
+    const uid = await currentUserId(req);
+    if (f.userId !== uid) {
+      if (!(uid && f.workspaceId && (await isMember(f.workspaceId, uid)))) return undefined;
+    }
+  }
   return f;
 }
 

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createIntegration, listIntegrations, redactIntegration } from "@/lib/store";
+import { visibleList } from "@/lib/engine/access";
 import { currentUserId } from "@/lib/engine/auth";
+import { myWorkspaceIds } from "@/lib/engine/workspaces";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,9 +10,9 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const uid = await currentUserId(req);
   const all = await listIntegrations();
-  // Multi-tenant: a signed-in user sees only their own; anonymous/unkeyed mode
-  // has no owners and stays single-tenant. Never hand another user's ids out.
-  const visible = uid ? all.filter((i) => i.userId === uid) : all.filter((i) => !i.userId);
+  // Multi-tenant: a signed-in user sees their own plus workspace-shared records;
+  // anonymous/unkeyed mode has no owners and stays single-tenant.
+  const visible = visibleList(all, uid, await myWorkspaceIds(uid));
   return NextResponse.json({ integrations: visible.map(redactIntegration) });
 }
 

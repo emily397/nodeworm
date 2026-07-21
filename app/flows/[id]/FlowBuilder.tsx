@@ -85,6 +85,25 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
   const [regParams, setRegParams] = useState<Record<string, string>>({});
   const [regBusy, setRegBusy] = useState(false);
   const [regError, setRegError] = useState<string | null>(null);
+  const [ws, setWs] = useState<{ signedIn?: boolean; userId?: string; workspaces: Array<{ id: string; name: string }> } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/workspaces")
+      .then((r) => r.json())
+      .then((d) => setWs(d.available ? d : null))
+      .catch(() => {});
+  }, []);
+
+  async function shareTo(workspaceId: string) {
+    const d = await fetch(`/api/flows/${initial.id}/share`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ workspaceId: workspaceId || null }),
+    })
+      .then((r) => r.json())
+      .catch(() => null);
+    if (d?.flow) setFlow((f) => ({ ...f, workspaceId: d.flow.workspaceId }));
+  }
 
   useEffect(() => {
     fetch("/api/integrations")
@@ -513,6 +532,22 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
           >
             {flow.enabled ? "Pause flow" : "Resume flow"}
           </button>
+          {ws?.signedIn && ws.workspaces.length > 0 && flow.userId === ws.userId && (
+            <select
+              value={flow.workspaceId ?? ""}
+              onChange={(e) => shareTo(e.target.value)}
+              title="Share this flow with a workspace; members can view, edit and run it"
+              className="rounded-lg px-3 py-2 font-mono text-xs outline-none"
+              style={inputStyle}
+            >
+              <option value="">private</option>
+              {ws.workspaces.map((w) => (
+                <option key={w.id} value={w.id}>
+                  shared: {w.name}
+                </option>
+              ))}
+            </select>
+          )}
           <span className="flex-1" />
           <button onClick={remove} className="font-mono text-xs px-2.5 py-1.5 rounded-lg" style={{ color: "var(--color-blocked)", border: "1px solid var(--color-line)" }}>
             delete flow

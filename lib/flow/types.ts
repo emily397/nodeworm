@@ -76,6 +76,9 @@ export interface FlowBranch {
 export interface Flow {
   id: string;
   userId?: string;
+  // Shared into a team workspace: members can see, edit and run it. Set only
+  // by the owner through the validated share endpoint, never by generic patch.
+  workspaceId?: string;
   name: string;
   description?: string;
   enabled: boolean;

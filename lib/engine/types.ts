@@ -364,6 +364,10 @@ export interface Integration {
   appName: string;
   appUrl?: string;
   userId?: string; // owner when created while signed in; absent for anonymous runs
+  // Shared into a team workspace: members may use this connection in flows.
+  // Execution stays server-side under the OWNER's vault scope; members never
+  // see credentials. Set only via the validated share endpoint.
+  workspaceId?: string;
   status: IntegrationStatus;
   createdAt: number;
   updatedAt: number;

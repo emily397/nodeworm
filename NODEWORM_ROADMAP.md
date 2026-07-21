@@ -105,7 +105,18 @@ server-held `trigger.registration`, builder UI (register button, param inputs, r
 chip + un-register). Verified: availability probe live (stripe curated), tokenless attempt
 refuses honestly, request building unit-proven incl. form encoding + param substitution.
 
-**Still deferred (deliberate):** team workspaces, parallel/nested paths beyond one level.
+Fifth increment (2026-07-22): **team workspaces DONE.** Share flows + connections between
+accounts; shared connections execute server-side under the OWNER's vault scope (members use
+them, never see credentials). `lib/engine/access.ts` pure visibility rules (5 tests: prior
+single-user semantics preserved exactly, workspace membership is the only new grant),
+`lib/engine/workspaces.ts` (Neon workspaces/members/invites, invite-by-email converts on
+first sign-in/up), workspace-aware `getOwnedFlow`/`getOwnedIntegration` guards, validated
+share endpoints (owner-only + member-of-target; never via generic patch), /workspaces page
++ Team nav + share select on the builder + shared badges. E2E-proven with two real accounts:
+invite auto-converted at signup, member saw/ran ONLY the shared flow + shared connection,
+404 on the private flow, 403 on non-owner share.
+
+**Still deferred (deliberate):** parallel/nested paths beyond one level.
 
 ## Sequencing rationale
 0 unlocks six built tiers for the cost of three env vars. 1 before 2 because the flagship loop needs durable artifacts between serverless invocations. 2 is the product's flagship moment and the demo that sells it. 3 broadens who can run it and retires the honest-open security items. 4 turns a generator into a self-maintaining platform. 5 is a refactor with regression risk, so it goes last on top of frozen behavior.

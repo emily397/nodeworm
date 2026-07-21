@@ -7,6 +7,7 @@ import path from "path";
 import { neon } from "@neondatabase/serverless";
 import { freshPhases, type Bridge, type Integration } from "./engine/types";
 import { authAvailable, currentUserId } from "./engine/auth";
+import { isMember } from "./engine/workspaces";
 import { unpackBundle } from "./engine/bundle-store";
 import type { CacheBackend } from "./engine/cache";
 
@@ -114,15 +115,21 @@ export async function getIntegration(id: string): Promise<Integration | undefine
 }
 
 // Ownership-scoped fetch for the per-integration API routes. When accounts are on
-// and the record has an owner, only that owner may read/mutate it; returns
-// undefined (route answers 404) otherwise, so ids can't be used to reach another
-// user's integration. Anonymous/unkeyed mode has no owners and stays single-tenant.
+// and the record has an owner, only that owner OR a member of the workspace it is
+// shared into may reach it; returns undefined (route answers 404) otherwise, so ids
+// can't be used to reach another user's integration. Anonymous/unkeyed mode has no
+// owners and stays single-tenant.
 // NOTE: only for session-authenticated routes; token-authenticated flows (the
 // Agent execute/callback) must not use this.
 export async function getOwnedIntegration(req: Request, id: string): Promise<Integration | undefined> {
   const it = await getIntegration(id);
   if (!it) return undefined;
-  if (authAvailable() && it.userId && it.userId !== (await currentUserId(req))) return undefined;
+  if (authAvailable() && it.userId) {
+    const uid = await currentUserId(req);
+    if (it.userId !== uid) {
+      if (!(uid && it.workspaceId && (await isMember(it.workspaceId, uid)))) return undefined;
+    }
+  }
   return it;
 }
 

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { visibleList } from "@/lib/engine/access";
 import { currentUserId } from "@/lib/engine/auth";
+import { myWorkspaceIds } from "@/lib/engine/workspaces";
 import { parseWorkflow } from "@/lib/engine/custom/intent";
 import { planToFlow } from "@/lib/flow/draft";
 import { newFlowRecord, redactFlow } from "@/lib/flow/model";
@@ -14,7 +16,7 @@ export const maxDuration = 60;
 export async function GET(req: Request) {
   const uid = await currentUserId(req);
   const all = await listFlows();
-  const visible = uid ? all.filter((f) => f.userId === uid) : all.filter((f) => !f.userId);
+  const visible = visibleList(all, uid, await myWorkspaceIds(uid));
   return NextResponse.json({ flows: visible.map(redactFlow) });
 }
 

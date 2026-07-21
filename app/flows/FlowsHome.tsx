@@ -194,6 +194,12 @@ export function FlowsHome({ initial }: { initial: Flow[] }) {
                     {f.lastRunAt ? `ran ${timeAgo(f.lastRunAt, now)}` : "never run"}
                   </span>
 
+                  {f.workspaceId && (
+                    <span className="chip" title="Shared with a workspace">
+                      <span className="dot" style={{ background: "var(--color-aqua)" }} />
+                      shared
+                    </span>
+                  )}
                   <span className="chip">
                     <span className="dot" style={{ background: f.enabled ? "var(--color-live)" : "var(--color-amber)" }} />
                     {f.enabled ? "live" : "paused"}
