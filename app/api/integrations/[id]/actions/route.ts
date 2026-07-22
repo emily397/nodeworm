@@ -5,6 +5,7 @@ import { getVaultConnector } from "@/lib/engine/vault";
 import { toActions } from "@/lib/flow/actions";
 import { mcpEnvelope, parseMcpTools } from "@/lib/flow/mcp";
 import { mcpPost } from "@/lib/flow/effects";
+import { pieceActions, pieceFor } from "@/lib/pieces/registry";
 import { getOwnedIntegration } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -20,9 +21,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const it = await getOwnedIntegration(req, id);
   if (!it) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const surface = await collectSurfaceOps(it);
+  // An adapted piece is the highest-signal source: hand-curated real operations for
+  // this exact app, so it wins over the discovery ladder when one exists.
+  const piece = pieceFor(it.appName);
+  const surface = piece ? { ops: [], apiBase: piece.apiBase, specSource: "piece" as const } : await collectSurfaceOps(it);
   const apiBase = surface.apiBase ?? (it.discovery ? discoveredApiBase(it.discovery) : undefined);
-  const actions = toActions(surface.ops, apiBase);
+  const actions = piece ? pieceActions(piece) : toActions(surface.ops, apiBase);
 
   let mcpTools: Array<{ name: string; description: string }> = [];
   if (it.connector?.verified) {

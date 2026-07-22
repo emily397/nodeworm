@@ -25,6 +25,7 @@ const CATALOG_SOURCE_LABEL: Record<string, string> = {
   har: "from captured traffic",
   probe: "from the app's own OpenAPI",
   "apis.guru": "from the APIs.guru directory",
+  piece: "from a built-in connector",
   none: "no discovered operations",
 };
 

@@ -7,7 +7,7 @@ import { isLlmEnabled, llmDiscovery } from "./llm";
 import { enrichWithProbe, probeEnabled, probeTarget, seedUrls } from "./probe";
 import { researchMethods } from "./research";
 import { hostedConnectorAvailableFor } from "./hosted-connectors";
-import { nangoLookup } from "./intel/nango";
+import { providerLookup } from "./intel/providers";
 import { hostedMcpForApp } from "./intel/mcp-registry";
 import { scout, architect, wire, auditor, report } from "./phases";
 import { TieredCache, type CacheBackend } from "./cache";
@@ -61,7 +61,7 @@ async function discoverUncached(name: string, url?: string): Promise<Discovery> 
   // Reverse-engineer the live target and layer real endpoints onto the base.
   const probe = probeEnabled() ? await probeTarget(seedUrls(base, url ?? name)) : null;
   const d = probe ? enrichWithProbe(base, probe) : base;
-  await fillNangoOAuth(d, name);
+  await fillRegistryOAuth(d, name);
   // Resolve the app's OFFICIAL hosted MCP from the registry (Notion/Stripe/Linear
   // etc.). Surfaced as the preferred zero-setup, Claude-native recommendation; it
   // does NOT change connect routing (a registry hiccup just yields no recommendation).
@@ -75,16 +75,16 @@ async function discoverUncached(name: string, url?: string): Promise<Discovery> 
   return d;
 }
 
-// Deterministic OAuth from the Nango registry. If neither the knowledge base nor the
-// live probe produced a genuine OAuth path (and no MCP wins), consult the registry of
-// ~200 real providers before the engine falls to the managed-session floor. Real
-// curated endpoints, so routing to genuine OAuth is honest; the recovery resolver
-// then acquires the client creds (env -> vault -> DCR -> guided/automated portal).
-async function fillNangoOAuth(d: Discovery, name: string): Promise<void> {
+// Deterministic OAuth from NodeWorm's own provider registry. If neither the knowledge
+// base nor the live probe produced a genuine OAuth path (and no MCP wins), consult the
+// registry before the engine falls to the managed-session floor. Real curated
+// endpoints, so routing to genuine OAuth is honest; the recovery resolver then
+// acquires the client creds (env -> vault -> DCR -> guided/automated portal).
+async function fillRegistryOAuth(d: Discovery, name: string): Promise<void> {
   if (d.hasHostedMcp) return;
   // The live probe (real published metadata) and our own knowledge base are
   // authoritative; never override them. But OAuth URLs that came from the LLM or
-  // heuristics are model-recall and can be wrong, so the Nango registry (a curated,
+  // heuristics are model-recall and can be wrong, so the registry (a curated,
   // maintained source of truth) PREFERS over them: it fills when absent AND corrects
   // a recalled guess when present.
   const fromProbe = Boolean(d.probe?.oauthAuthorizeUrl && d.probe?.oauthTokenUrl);
@@ -92,7 +92,7 @@ async function fillNangoOAuth(d: Discovery, name: string): Promise<void> {
   const fromKb = Boolean(kb?.oauthAuthorizeUrl && kb?.oauthTokenUrl);
   if (fromProbe || fromKb) return;
 
-  const ng = await nangoLookup(name).catch(() => undefined);
+  const ng = await providerLookup(name).catch(() => undefined);
   if (!ng) return;
   const correcting = Boolean(d.oauthAuthorizeUrl) && d.oauthAuthorizeUrl !== ng.authorizeUrl;
 
@@ -107,8 +107,8 @@ async function fillNangoOAuth(d: Discovery, name: string): Promise<void> {
   d.notes = [
     ...d.notes,
     correcting
-      ? `OAuth endpoints corrected to the Nango provider registry (${ng.provider}) over a model-recalled guess.`
-      : `OAuth endpoints resolved from the Nango provider registry (${ng.provider}).`,
+      ? `OAuth endpoints corrected to the provider registry (${ng.provider}) over a model-recalled guess.`
+      : `OAuth endpoints resolved from the provider registry (${ng.provider}).`,
   ];
   let host = ng.authorizeUrl;
   try {
@@ -116,7 +116,7 @@ async function fillNangoOAuth(d: Discovery, name: string): Promise<void> {
   } catch {
     /* keep raw */
   }
-  d.telemetry = [...d.telemetry, { level: "ok", text: `Nango registry: genuine OAuth for ${ng.displayName} (${host}).` }];
+  d.telemetry = [...d.telemetry, { level: "ok", text: `Provider registry: genuine OAuth for ${ng.displayName} (${host}).` }];
 }
 
 // A connection exists once OAuth tokens are held OR a managed browser session has
