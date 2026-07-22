@@ -48,6 +48,7 @@ export const HUBSPOT: PieceDefinition = {
     { key: "new_deal", name: "New deal", type: "polling", itemsPath: "results", idPath: "id" },
   ],
   upstream: {
+    origin: "activepieces",
     repo: "activepieces/activepieces",
     sourcePath: "packages/pieces/community/hubspot",
     sha: "062907cc038c775c5a1c13711155719630279756",

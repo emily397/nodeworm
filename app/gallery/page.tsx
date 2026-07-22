@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { listBridges } from "@/lib/store";
+import { allPieces, pieceToNode } from "@/lib/pieces/registry";
 import { Gallery, type MyWorm } from "./Gallery";
 
 export const dynamic = "force-dynamic";
@@ -18,5 +19,8 @@ export default async function GalleryPage() {
     to: b.targetName,
     status: b.status,
   }));
-  return <Gallery myWorms={myWorms} />;
+  // Built-in connectors are first-class nodes in the pond: they carry curated
+  // real actions, so they should be discoverable next to the catalog apps.
+  const pieceNodes = allPieces().map(pieceToNode);
+  return <Gallery myWorms={myWorms} pieceNodes={pieceNodes} />;
 }

@@ -162,6 +162,27 @@ Pieces 2..N scale-up gated on Phase 1's per-piece number, plus a first-class ema
 
 **Not verified live (credential gaps, not code gaps):** GlitchTip capture needs a DSN, and gateway routing needs a running LiteLLM instance. Both are inert and unit-tested until those exist.
 
+## Phase 5 outcome (executed 2026-07-22)
+
+**Connector scale-up: 1 to 19 built-in connectors.** Added Slack, Notion, GitHub, Airtable, Linear, Asana, Discord, Google Sheets, Google Calendar, Gmail, Typeform, Calendly, Zoom, Intercom, Pipedrive, Todoist, ClickUp and Monday alongside the adapted HubSpot. Verified live: each resolves `source=piece` with its real API base and curated actions (Slack 3, Notion 4, GitHub 4, Google Sheets 3, Airtable 3, Todoist 3, Zoom 2). All 19 now appear in the Gallery marked "ready", deduped against the static catalog.
+
+**Provenance correctness fix (important).** The Phase 1 type forced every piece to declare an Activepieces commit. Authoring the batch would have meant stamping a false upstream SHA and MIT claim on connectors written from vendor docs, which would have put a wrong attribution on `/oss`. `PieceProvenance` is now a union: `{origin:"activepieces", repo, sourcePath, sha, license}` or `{origin:"vendor-docs", docsUrl}`. The guard test enforces both shapes, and specifically asserts a vendor-docs piece carries NO `sha` and NO `license`. `/oss` lists only the genuinely adapted work and states the split plainly ("19 built-in connectors, the 1 listed above is adapted, the remaining 18 authored from vendor docs").
+
+**Method finding that revises the 300-connector plan.** For well-known apps, authoring from the vendor's own API docs is as fast as adapting an Activepieces piece and carries no licence entanglement at all. Activepieces adaptation earns its keep for OBSCURE apps, where their curation of which endpoints matter is the real moat, not for apps whose APIs are well documented. Recommended split going forward: vendor-docs authoring for the mainstream long tail, Activepieces adaptation reserved for the awkward ones. This also removes most of the pressure for the codegen path.
+
+**Deliberate scope limits (not bugs, documented rather than half-supported):** the flow http step always sends `application/json`, so form-encoded APIs (Stripe) are excluded from the connector set; and per-tenant templated hosts (Shopify, Mailchimp) are excluded until a step can carry a per-connection base URL. Both are named in `lib/pieces/vendor.ts`.
+
+---
+
+## Needs Emily (blocked on credentials or a decision, not on code)
+
+1. **Connect a real account to prove an authenticated call.** Everything up to the auth boundary is verified; no live third-party write has been executed. Connect any built-in connector (HubSpot, Slack, Notion) via OAuth and run a flow step to close that loop.
+2. **GlitchTip DSN.** Set `GLITCHTIP_DSN` in Vercel production to turn error capture on. Inert and unit-tested until then.
+3. **LiteLLM instance.** Set `LLM_GATEWAY_URL` and `LLM_GATEWAY_KEY` to route AI steps through the gateway with per-customer spend caps. Direct cascade continues to work unchanged until then.
+4. **Uptime Kuma push URL.** Paste a per-flow monitor URL into a scheduled flow ("Alert me if this stops running") to arm dead-flow alerting. The ping path is verified; only the monitor endpoint is missing.
+5. **Email step decision.** No email step exists. Choose listmonk (needs an instance, AGPL so HTTP API only) or SES (needs AWS credentials), and it gets built as a first-class step. Until then "email me" flows need a manually configured http step.
+6. **Stripe and Shopify connectors** need the two step-model gaps above (form encoding, per-connection base URL) before they can ship as built-ins. Say the word and they are a small follow-up.
+
 ## Risk register (top 5)
 
 1. **Activepieces `ee` carve-out contamination** (two paths, including the easy-to-miss `packages/server/api/src/app/ee`). Mitigation: the vendoring script copies ONLY `packages/pieces/community/<piece>`; a CI check greps adapted files for any `ee` provenance and records the upstream SHA plus per-piece licence in `MANIFEST.json`.

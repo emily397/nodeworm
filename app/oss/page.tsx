@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { pieceProvenance } from "@/lib/pieces/registry";
+import { adaptedProvenance, pieceCount } from "@/lib/pieces/registry";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,8 @@ const COMPONENTS = [
 ];
 
 export default function OssPage() {
-  const pieces = pieceProvenance();
+  const pieces = adaptedProvenance();
+  const total = pieceCount();
   return (
     <div className="mx-auto max-w-3xl px-5 py-14">
       <div className="kicker mb-2">attribution</div>
@@ -60,9 +61,9 @@ export default function OssPage() {
                 {pieces.map((p) => (
                   <tr key={p.name} style={{ borderTop: "1px solid var(--color-line)" }}>
                     <td className="px-4 py-2.5 font-semibold">{p.name}</td>
-                    <td className="px-4 py-2.5">{p.license}</td>
+                    <td className="px-4 py-2.5">{p.origin === "activepieces" ? p.license : ""}</td>
                     <td className="px-4 py-2.5 font-mono text-xs" style={{ color: "var(--color-muted)" }}>
-                      {p.sha.slice(0, 10)}
+                      {p.origin === "activepieces" ? p.sha.slice(0, 10) : ""}
                     </td>
                   </tr>
                 ))}
@@ -73,8 +74,7 @@ export default function OssPage() {
       )}
 
       <p className="text-xs mt-8" style={{ color: "var(--color-muted)" }}>
-        NodeWorm&apos;s OAuth provider registry is authored from each vendor&apos;s own public documentation and is not
-        derived from any third-party registry.
+        {`NodeWorm ships ${total} built-in connectors. The ${pieces.length} listed above ${pieces.length === 1 ? "is" : "are"} adapted from open-source work and ${pieces.length === 1 ? "carries" : "carry"} the notices shown. The remaining ${total - pieces.length}, and NodeWorm's OAuth provider registry, are authored from each vendor's own public API documentation and are not derived from any third-party project.`}
       </p>
       <Link href="/" className="text-sm mt-6 inline-block underline decoration-dotted" style={{ color: "var(--color-signal)" }}>
         Back to NodeWorm

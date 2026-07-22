@@ -49,7 +49,13 @@ export interface PieceDefinition {
   props: PieceProp[];
   actions: PieceAction[];
   triggers: PieceTrigger[];
-  // Provenance, mirrored into lib/pieces/MANIFEST.json. Kept so the /oss page
-  // and the ee-provenance CI check have a single source of truth.
-  upstream: { repo: string; sourcePath: string; sha: string; license: "MIT" };
+  upstream: PieceProvenance;
 }
+
+// Where a piece came from. Being precise matters legally: only "activepieces"
+// pieces are derivative works needing attribution and a pinned commit. Pieces
+// authored from a vendor's own public API docs carry no third-party licence, and
+// must not claim an upstream commit they did not come from.
+export type PieceProvenance =
+  | { origin: "activepieces"; repo: string; sourcePath: string; sha: string; license: "MIT" }
+  | { origin: "vendor-docs"; docsUrl: string };

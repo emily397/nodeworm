@@ -3,10 +3,11 @@
 // actions with no other change. Gated by PIECES_ENABLED so the spike ships dark.
 
 import { HUBSPOT } from "./hubspot";
+import { VENDOR_PIECES } from "./vendor";
 import { pieceActions, pieceOAuth, pieceToNode } from "./adapt";
 import type { PieceDefinition } from "./types";
 
-const PIECES: PieceDefinition[] = [HUBSPOT];
+const PIECES: PieceDefinition[] = [HUBSPOT, ...VENDOR_PIECES];
 
 export function piecesEnabled(): boolean {
   return process.env.PIECES_ENABLED === "1";
@@ -29,6 +30,15 @@ export function allPieces(): PieceDefinition[] {
 // independent of the feature flag: attribution is not feature-gated.
 export function pieceProvenance(): Array<PieceDefinition["upstream"] & { name: string }> {
   return PIECES.map((p) => ({ name: p.name, ...p.upstream }));
+}
+
+// Only the pieces that are derivative works and therefore need attribution.
+export function adaptedProvenance() {
+  return pieceProvenance().filter((p) => p.origin === "activepieces");
+}
+
+export function pieceCount(): number {
+  return PIECES.length;
 }
 
 export { pieceActions, pieceOAuth, pieceToNode };

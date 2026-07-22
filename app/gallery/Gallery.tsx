@@ -17,7 +17,7 @@ export interface MyWorm {
 // The categories present in the pond, in a stable display order.
 const CATS: NodeCategory[] = ["messaging", "productivity", "dev", "finance", "crm", "commerce", "scheduling", "storage", "marketing"];
 
-export function Gallery({ myWorms = [] }: { myWorms?: MyWorm[] }) {
+export function Gallery({ myWorms = [], pieceNodes = [] }: { myWorms?: MyWorm[]; pieceNodes?: Node[] }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [cat, setCat] = useState<NodeCategory | "all">("all");
@@ -25,18 +25,26 @@ export function Gallery({ myWorms = [] }: { myWorms?: MyWorm[] }) {
   const [castingNode, setCastingNode] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
+  // Built-in connectors join the catalog, deduped by name (a piece wins, since it
+  // carries real curated actions rather than just a label).
+  const pond = useMemo(() => {
+    const names = new Set(pieceNodes.map((p) => p.name.toLowerCase()));
+    return [...pieceNodes, ...NODES.filter((n) => !names.has(n.name.toLowerCase()))];
+  }, [pieceNodes]);
+  const builtIn = useMemo(() => new Set(pieceNodes.map((p) => p.name.toLowerCase())), [pieceNodes]);
+
   const q = query.trim().toLowerCase();
   const filtered = useMemo(
     () =>
-      NODES.filter(
+      pond.filter(
         (n) =>
           (cat === "all" || n.category === cat) &&
           (!q || n.name.toLowerCase().includes(q) || CATEGORY_LABEL[n.category].includes(q)),
       ),
-    [q, cat],
+    [q, cat, pond],
   );
   // Exact-ish match check drives whether "go fish" is offered for the typed name.
-  const hasExact = q.length > 0 && NODES.some((n) => n.name.toLowerCase() === q);
+  const hasExact = q.length > 0 && pond.some((n) => n.name.toLowerCase() === q);
 
   // Cast a worm: the plain-language prompt becomes a real bridge via the NL engine.
   async function castWorm(w: Worm) {
@@ -183,7 +191,7 @@ export function Gallery({ myWorms = [] }: { myWorms?: MyWorm[] }) {
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
           {filtered.map((n, i) => (
-            <NodeTile key={n.name} node={n} delay={Math.min(i, 12) * 30} busy={castingNode === n.name} onCatch={() => catchNode(n.name)} />
+            <NodeTile key={n.name} node={n} delay={Math.min(i, 12) * 30} busy={castingNode === n.name} builtIn={builtIn.has(n.name.toLowerCase())} onCatch={() => catchNode(n.name)} />
           ))}
           {/* Go fish: always available, and the star of the show when nothing matches. */}
           {q && !hasExact && (
@@ -316,14 +324,23 @@ function WormCard({ worm, delay, busy, onCast, wide }: { worm: Worm; delay: numb
   );
 }
 
-function NodeTile({ node, delay, busy, onCatch }: { node: Node; delay: number; busy: boolean; onCatch: () => void }) {
+function NodeTile({ node, delay, busy, builtIn, onCatch }: { node: Node; delay: number; busy: boolean; builtIn?: boolean; onCatch: () => void }) {
   return (
     <button
       onClick={onCatch}
       disabled={busy}
-      className="node-tile group card p-4 flex flex-col items-center gap-2.5 text-center rise transition-transform"
-      style={{ animationDelay: `${delay}ms` }}
+      className="node-tile group card p-4 flex flex-col items-center gap-2.5 text-center rise transition-transform relative"
+      style={{ animationDelay: `${delay}ms`, borderColor: builtIn ? "color-mix(in srgb, var(--color-live) 45%, var(--color-line))" : undefined }}
     >
+      {builtIn && (
+        <span
+          className="absolute top-2 right-2 text-[0.5rem] uppercase tracking-wider px-1.5 py-0.5 rounded"
+          style={{ color: "var(--color-live)", border: "1px solid color-mix(in srgb, var(--color-live) 45%, transparent)" }}
+          title="Built-in connector with ready-made actions"
+        >
+          ready
+        </span>
+      )}
       <Chip name={node.name} category={node.category} size={44} />
       <div>
         <div className="text-sm font-semibold leading-tight">{node.name}</div>

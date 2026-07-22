@@ -24,7 +24,7 @@ const HUBSPOT: PieceDefinition = {
     { key: "get_contact", name: "Get contact", description: "Fetch a contact", method: "get", path: "/crm/v3/objects/contacts/{id}" },
   ],
   triggers: [{ key: "new_contact", name: "New contact", type: "polling", itemsPath: "results", idPath: "id" }],
-  upstream: { repo: "activepieces/activepieces", sourcePath: "packages/pieces/community/hubspot", sha: "PENDING", license: "MIT" },
+  upstream: { origin: "activepieces", repo: "activepieces/activepieces", sourcePath: "packages/pieces/community/hubspot", sha: "PENDING", license: "MIT" },
 };
 
 describe("pieceToNode", () => {
