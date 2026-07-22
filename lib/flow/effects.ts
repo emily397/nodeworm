@@ -4,8 +4,10 @@
 
 import { assertConnectorUrl } from "../engine/connector";
 import { chatJson, isLlmEnabled } from "../engine/llm";
+import { clientCreds, providerFor, refreshAccessToken } from "../engine/oauth";
+import { shouldRefresh } from "../engine/refresh";
 import type { Integration } from "../engine/types";
-import { getVaultConnector, getVaultTokens } from "../engine/vault";
+import { getVaultConnector, getVaultTokens, storeTokens } from "../engine/vault";
 import { mcpEnvelope, parseMcpHttpBody, parseMcpResult } from "./mcp";
 import type { EffectInput, EffectResult, StepEffects } from "./run";
 import type { FlowStep } from "./types";
@@ -16,7 +18,7 @@ const MAX_BODY = 64 * 1024;
 const AI_SYSTEM = `You are one step inside a NodeWorm flow automation. Follow the step's instruction against the data it contains.
 Respond with ONLY one minified JSON object: {"result": <string, object or array>}. No markdown, no commentary.`;
 
-async function call(url: string, method: string, body: unknown, headers: Record<string, string>): Promise<EffectResult> {
+async function call(url: string, method: string, body: unknown, headers: Record<string, string>): Promise<EffectResult & { status: number }> {
   const host = new URL(url).host;
   let res: Response;
   try {
@@ -29,7 +31,7 @@ async function call(url: string, method: string, body: unknown, headers: Record<
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch {
-    return { ok: false, summary: `could not reach ${host}` };
+    return { ok: false, summary: `could not reach ${host}`, status: 0 };
   }
   const text = (await res.text().catch(() => "")).slice(0, MAX_BODY);
   let output: unknown = text || undefined;
@@ -39,7 +41,21 @@ async function call(url: string, method: string, body: unknown, headers: Record<
     // non-JSON body stays as bounded text
   }
   const ok = res.status >= 200 && res.status < 400;
-  return { ok, summary: `HTTP ${res.status} from ${host}`, output };
+  return { ok, summary: `HTTP ${res.status} from ${host}`, output, status: res.status };
+}
+
+// Renew this connection's access token with its stored refresh token and persist the
+// result, so the caller can retry once. Returns the new access token, or null when the
+// app has no refreshable provider/client or the provider rejects the refresh.
+async function renewToken(it: Integration, refreshToken: string): Promise<string | null> {
+  const provider = providerFor(it.appName, it.discovery);
+  if (!provider) return null;
+  const creds = await clientCreds(it.appName, { connectionId: it.id, userId: it.userId });
+  if (!creds) return null;
+  const r = await refreshAccessToken({ provider, creds, refreshToken });
+  if (!r.ok || !r.accessToken) return null;
+  await storeTokens(it.appName, { connectionId: it.id, userId: it.userId }, r.accessToken, r.refreshToken, "refresh");
+  return r.accessToken;
 }
 
 async function guard(url: string): Promise<string | null> {
@@ -61,6 +77,7 @@ export function realEffects(getIntegration: (id: string) => Promise<Integration 
     const blocked = await guard(input.url);
     if (blocked) return { ok: false, summary: blocked };
     const headers: Record<string, string> = {};
+    let authed: { it: Integration; refreshToken?: string } | null = null;
     if (withAuth) {
       const { it, fail } = await connection(step);
       if (fail) return { ok: false, summary: fail };
@@ -68,9 +85,22 @@ export function realEffects(getIntegration: (id: string) => Promise<Integration 
         const tokens = await getVaultTokens(it.appName, { connectionId: it.id, userId: it.userId });
         if (!tokens) return { ok: false, summary: `no stored token for ${it.appName}; reconnect it first` };
         headers.authorization = `Bearer ${tokens.accessToken}`;
+        authed = { it, refreshToken: tokens.refreshToken };
       }
     }
-    return call(input.url, input.method ?? "POST", input.body, headers);
+
+    const first = await call(input.url, input.method ?? "POST", input.body, headers);
+    // Reactive refresh: an expired access token shows up as a 401/403. Renew once
+    // with the stored refresh token and retry, so long-lived connections stop dying
+    // silently. Without a refresh token we say so honestly rather than loop.
+    if (authed && shouldRefresh(first.status, authed.refreshToken)) {
+      const fresh = await renewToken(authed.it, authed.refreshToken!);
+      if (!fresh) {
+        return { ...first, summary: `${authed.it.appName} rejected the saved login and it could not be renewed; reconnect it` };
+      }
+      return call(input.url, input.method ?? "POST", input.body, { ...headers, authorization: `Bearer ${fresh}` });
+    }
+    return first;
   }
 
   return {

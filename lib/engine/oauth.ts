@@ -358,6 +358,54 @@ export interface TokenResult {
   error?: string;
 }
 
+// Renew an expired access token with a stored refresh token (RFC 6749 s6). NodeWorm
+// refreshes REACTIVELY: a flow step that gets a 401/403 retries once through here, so
+// no token-expiry column is needed. Providers that rotate refresh tokens return a new
+// one; those that do not keep the caller's existing token (see the merge below).
+export async function refreshAccessToken(opts: {
+  provider: OAuthProvider;
+  creds: ClientCreds;
+  refreshToken: string;
+}): Promise<TokenResult> {
+  const { provider, creds, refreshToken } = opts;
+  const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken });
+
+  const headers: Record<string, string> = {
+    "content-type": "application/x-www-form-urlencoded",
+    accept: "application/json",
+  };
+  if (provider.tokenAuth === "basic") {
+    headers.authorization = `Basic ${Buffer.from(`${creds.clientId}:${creds.clientSecret}`).toString("base64")}`;
+  } else {
+    body.set("client_id", creds.clientId);
+    body.set("client_secret", creds.clientSecret);
+  }
+
+  try {
+    const res = await fetch(resolveUrl(provider.tokenUrl, provider), { method: "POST", headers, body });
+    const text = await res.text();
+    let data: Record<string, unknown> = {};
+    try {
+      data = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      data = Object.fromEntries(new URLSearchParams(text));
+    }
+    if (!res.ok || data.error) {
+      return { ok: false, error: String(data.error_description ?? data.error ?? `HTTP ${res.status}`) };
+    }
+    const accessToken = String(data.access_token ?? "");
+    if (!accessToken) return { ok: false, error: "No access_token in refresh response." };
+    return {
+      ok: true,
+      accessToken,
+      refreshToken: typeof data.refresh_token === "string" ? data.refresh_token : refreshToken,
+      raw: data,
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Token refresh failed." };
+  }
+}
+
 export async function exchangeCode(opts: {
   provider: OAuthProvider;
   creds: ClientCreds;

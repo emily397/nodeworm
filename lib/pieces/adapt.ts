@@ -17,14 +17,35 @@ export interface PieceOAuthProvider {
   pkce: boolean;
 }
 
-export function pieceToNode(_piece: PieceDefinition): Node {
-  throw new Error("not implemented: pieceToNode");
+export function pieceToNode(piece: PieceDefinition): Node {
+  return { name: piece.name, category: piece.category };
 }
 
-export function pieceOAuth(_piece: PieceDefinition): PieceOAuthProvider | null {
-  throw new Error("not implemented: pieceOAuth");
+export function pieceOAuth(piece: PieceDefinition): PieceOAuthProvider | null {
+  if (piece.auth.type !== "oauth2") return null;
+  const a = piece.auth;
+  return {
+    authorizeUrl: a.authorizeUrl,
+    tokenUrl: a.tokenUrl,
+    scopes: a.scopes,
+    scopeSep: a.scopeSep ?? " ",
+    pkce: a.pkce ?? false,
+  };
 }
 
-export function pieceActions(_piece: PieceDefinition): FlowAction[] {
-  throw new Error("not implemented: pieceActions");
+function join(base: string, path: string): string {
+  return `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+}
+
+// A piece action becomes exactly the FlowAction shape the builder already renders
+// for discovered OpenAPI operations, so pieces need no new picker or step type.
+export function pieceActions(piece: PieceDefinition): FlowAction[] {
+  return piece.actions.map((a) => ({
+    name: a.name,
+    method: a.method.toUpperCase(),
+    path: a.path,
+    url: join(piece.apiBase, a.path),
+    summary: a.description,
+    bodyTemplate: a.bodyKeys?.length ? JSON.stringify(Object.fromEntries(a.bodyKeys.map((k) => [k, ""]))) : undefined,
+  }));
 }

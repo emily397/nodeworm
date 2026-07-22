@@ -138,6 +138,20 @@ Pieces 2..N scale-up gated on Phase 1's per-piece number, plus a first-class ema
 
 ---
 
+---
+
+## Spike outcome (executed 2026-07-22)
+
+**Nango licence check: FAILED the bar, dependency removed.** Primary source, method as prescribed: GitHub API gives default branch `master` and SPDX `NOASSERTION` ("Other"); the raw root LICENSE is **Elastic License 2.0**, applied uniformly with **no directory carve-out**; `packages/providers/providers.yaml` carries **no differing per-file marker**, so it is ELv2 too. ELv2 forbids offering the software as a hosted service, which is precisely NodeWorm's model, and it is not MIT/Apache/BSD. `lib/engine/intel/nango.ts` (which fetched that file at runtime) is **deleted** and replaced by `lib/engine/intel/providers.ts`: a self-maintained 38-provider registry authored from each vendor's own public OAuth docs, behind the same seam (`providerLookup`). `orchestrate.ts` updated; no behaviour change beyond provenance. Risk 3 is closed.
+
+**Phase 0.5 (token refresh): DONE.** `refreshAccessToken` in `lib/engine/oauth.ts` does `grant_type: refresh_token`, preserving a non-rotated refresh token and failing honestly on `invalid_grant`. `lib/engine/refresh.ts` holds the pure `shouldRefresh` decision. `lib/flow/effects.ts` now retries a step ONCE through a renewed token on 401/403, and when renewal is impossible it says "reconnect it" rather than looping. Chose REACTIVE refresh over a stored `expires_at` so no vault schema migration was needed; proactive expiry-based refresh stays available later. 5 new tests.
+
+**Phase 1 spike: DONE (adapter proven end to end).** `lib/pieces/` holds the data-first contract (`types.ts`), the pure adapters (`adapt.ts`), the registry (`registry.ts`, gated by `PIECES_ENABLED`), the licence guard (`provenance.test.ts`), and the adapted HubSpot piece (`hubspot.ts`) pinned to upstream `062907cc` with the MIT notice preserved. Verified live: with the flag off, HubSpot returns `source=none, actions=0`; with it on, `source=piece, apiBase=https://api.hubapi.com, actions=9` with genuine endpoints and body skeletons, and a flow step built from a piece action reaches the vault-auth boundary and fails honestly ("no stored token for HubSpot; reconnect it first"). `/oss` attribution page ships with the pinned commit table. **Not proven: a real authenticated HubSpot call**, which needs a HubSpot account connected via OAuth; that is a credential gap, not a code gap.
+
+**Key design win:** because `pieceActions` emits the existing `FlowAction` shape, a piece needs **no new step type and no new picker**. It plugs into the action catalog route as a higher-priority source. Phase 1 came in well under the M/L estimate for that reason.
+
+**Marginal cost of pieces 2..N (the number the 300 claim rests on):** the one-time runtime is now built, so per-piece cost is authoring a `PieceDefinition`. Auth is usually already in the provider registry; the real cost scales with **actions adapted, not pieces**. Upstream HubSpot ships 45 actions and 24 triggers; a useful curated subset was 9 actions in minutes. Estimate: **20 to 40 minutes per connector** for a curated 8 to 12 action surface, versus 2 to 3 hours to exhaust a large piece. **Honest revision to the 300 claim:** 300 connectors by hand is roughly 150 hours, which is not a sensible way to spend it. The data-first shape makes a **codegen path** (parse upstream piece source, emit a `PieceDefinition`) tractable, and that is the only route to 300. Recommendation: hand-curate a top 50 (about 25 to 30 hours), build codegen for the tail, and market the curated number rather than the ceiling.
+
 ## Risk register (top 5)
 
 1. **Activepieces `ee` carve-out contamination** (two paths, including the easy-to-miss `packages/server/api/src/app/ee`). Mitigation: the vendoring script copies ONLY `packages/pieces/community/<piece>`; a CI check greps adapted files for any `ee` provenance and records the upstream SHA plus per-piece licence in `MANIFEST.json`.
