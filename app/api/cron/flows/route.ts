@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fireFlow, pollFlowTick } from "@/lib/flow/runtime";
+import { fireFlow, pingHeartbeat, pollFlowTick, resumeDueRuns } from "@/lib/flow/runtime";
 import { listFlows } from "@/lib/flow/store";
 import type { Flow } from "@/lib/flow/types";
 
@@ -24,17 +24,25 @@ function isDue(f: Flow, now: number): boolean {
 async function sweep(): Promise<Response> {
   const now = Date.now();
   const flows = await listFlows();
-  const ran: Array<{ id: string; kind: string; status?: string; fired?: number; detail?: string }> = [];
+  const ran: Array<{ id: string; kind: string; status?: string; fired?: number; detail?: string; pinged?: boolean }> = [];
+
+  // Durability first: continue anything parked at a wait or orphaned by a dead
+  // process, before starting new work. Opt-in so it can be switched off instantly.
+  let resumed: Array<{ runId: string; status: string }> = [];
+  if (process.env.DURABLE_RUNTIME === "1") {
+    resumed = await resumeDueRuns(now);
+  }
 
   for (const flow of flows.filter((f) => f.enabled && f.trigger.type === "schedule" && isDue(f, now))) {
     const run = await fireFlow(flow, { type: "schedule", summary: "scheduled run", payload: { scheduledAt: now } });
-    ran.push({ id: flow.id, kind: "schedule", status: run.status });
+    const pinged = await pingHeartbeat(flow, run.status);
+    ran.push({ id: flow.id, kind: "schedule", status: run.status, pinged });
   }
   for (const flow of flows.filter((f) => f.enabled && f.trigger.type === "poll" && isDue(f, now))) {
     const r = await pollFlowTick(flow);
     ran.push({ id: flow.id, kind: "poll", fired: r.fired, detail: r.detail });
   }
-  return NextResponse.json({ ok: true, ran });
+  return NextResponse.json({ ok: true, ran, resumed });
 }
 
 export async function GET(req: Request) {

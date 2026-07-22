@@ -33,7 +33,7 @@ export interface FlowTrigger {
   };
 }
 
-export type FlowStepType = "http" | "connector" | "ai" | "filter" | "webhook-out" | "mcp" | "branch";
+export type FlowStepType = "http" | "connector" | "ai" | "filter" | "webhook-out" | "mcp" | "branch" | "wait";
 
 export type ConditionOp = "eq" | "neq" | "contains" | "exists" | "gt" | "lt";
 
@@ -64,6 +64,7 @@ export interface FlowStep {
   // a final failure halts the run (default) or lets it continue as "partial".
   retries?: number;
   onError?: "halt" | "continue";
+  waitMs?: number; // wait: park the run and resume after this delay
 }
 
 export interface FlowBranch {
@@ -94,10 +95,15 @@ export interface Flow {
   // Poll-trigger dedupe state, server-held (never client-set): ids already seen.
   // undefined means the first poll hasn't primed yet.
   pollState?: { seen: string[]; lastPolledAt?: number; lastDetail?: string };
+  // Uptime Kuma push URL. NodeWorm pings it after each successful scheduled or
+  // poll run; a missed ping is what the monitor alerts on.
+  heartbeatUrl?: string;
 }
 
 // "partial": the run completed but a continue-on-error step failed along the way.
-export type RunStatus = "running" | "ok" | "failed" | "filtered" | "partial";
+// "waiting": parked at a wait step (or mid-flight when the process died); the
+// resume sweep picks it back up from its cursor.
+export type RunStatus = "running" | "ok" | "failed" | "filtered" | "partial" | "waiting";
 export type StepRunStatus = "ok" | "failed" | "skipped" | "filtered";
 
 export interface StepRun {
@@ -116,8 +122,14 @@ export interface FlowRun {
   id: string;
   flowId: string;
   status: RunStatus;
-  trigger: { type: FlowTriggerType; summary: string };
+  // payload is persisted so a resumed run can rebuild its template context.
+  trigger: { type: FlowTriggerType; summary: string; payload?: unknown };
   startedAt: number;
   finishedAt?: number;
   steps: StepRun[];
+  // Durability: index of the next TOP-LEVEL step to execute, when to wake a
+  // parked run, and how many times it has been picked up.
+  cursor?: number;
+  resumeAt?: number;
+  attempt?: number;
 }

@@ -9,6 +9,7 @@
 // (both OpenAI-compatible). Any failure degrades silently to heuristics so the
 // product never hard-fails.
 
+import { gatewayEnabled, isSpendCapStatus, resolveEndpoint } from "./gateway";
 import type { AuthType, Discovery, TelemetryLine } from "./types";
 
 type Provider = "groq" | "openrouter";
@@ -35,14 +36,8 @@ function providerKey(p: Provider): string | undefined {
   return p === "groq" ? process.env.GROQ_API_KEY : process.env.OPENROUTER_API_KEY;
 }
 
-function providerUrl(p: Provider): string {
-  return p === "groq"
-    ? "https://api.groq.com/openai/v1/chat/completions"
-    : "https://openrouter.ai/api/v1/chat/completions";
-}
-
 export function isLlmEnabled(): boolean {
-  return Boolean(process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY);
+  return gatewayEnabled() || Boolean(process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY);
 }
 
 // Candidates whose provider key is present. Override the whole list without a
@@ -59,7 +54,9 @@ function candidates(): Candidate[] {
           return { provider: provider as Provider, model: rest.join(":"), tier: "free" as Tier };
         })
     : CASCADE;
-  return list.filter((c) => Boolean(providerKey(c.provider)));
+  // Behind a gateway the virtual key authorises every model, so provider keys
+  // are no longer required for a candidate to be callable.
+  return gatewayEnabled() ? list : list.filter((c) => Boolean(providerKey(c.provider)));
 }
 
 const DISCOVERY_KEYS = `appName(string), category(string), blurb(string),
@@ -117,10 +114,13 @@ async function post(url: string, key: string, body: Record<string, unknown>): Pr
   }
 }
 
+// A spend cap stops the whole cascade: trying more models cannot help, and
+// pretending "no model worked" would hide a billing problem.
+export class SpendCapError extends Error {}
+
 async function callModel(c: Candidate, system: string, user: string): Promise<Record<string, unknown> | null> {
-  const key = providerKey(c.provider);
+  const { url, key } = resolveEndpoint(c.provider);
   if (!key) return null;
-  const url = providerUrl(c.provider);
   const base = {
     model: c.model,
     max_tokens: 1200,
@@ -134,6 +134,9 @@ async function callModel(c: Candidate, system: string, user: string): Promise<Re
   let res = await post(url, key, { ...base, response_format: { type: "json_object" } });
   if (!res.ok && (res.status === 400 || res.status === 422 || res.status === 404)) {
     res = await post(url, key, base);
+  }
+  if (!res.ok && gatewayEnabled() && isSpendCapStatus(res.status)) {
+    throw new SpendCapError("the AI budget for this account has been reached");
   }
   if (!res.ok || !res.content) return null;
   return parseJson(res.content);

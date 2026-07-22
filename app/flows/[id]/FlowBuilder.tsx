@@ -8,6 +8,7 @@ import { timeAgo } from "@/app/components/status";
 import type { Integration } from "@/lib/engine/types";
 import type { FlowAction } from "@/lib/flow/actions";
 import type { McpTool } from "@/lib/flow/mcp";
+import { lastError } from "@/lib/flow/errors";
 import type { ConditionOp, Flow, FlowBranch, FlowCondition, FlowRun, FlowStep, FlowStepType, FlowTriggerType } from "@/lib/flow/types";
 import { ADVANCED_STEP_TYPES, PRIMARY_STEP_TYPES, RUN_COLORS, STEP_BLURBS, STEP_COLORS, STEP_LABELS, TRIGGER_LABEL } from "../meta";
 
@@ -523,9 +524,31 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
           )}
 
           {flow.trigger.type === "manual" && (
-            <p className="font-mono text-xs" style={{ color: "var(--color-muted)" }}>
-              Runs only when you press Run now.
+            <p className="text-sm" style={{ color: "var(--color-ink-soft)" }}>
+              This only runs when you press Test run.
             </p>
+          )}
+
+          {(flow.trigger.type === "schedule" || flow.trigger.type === "poll") && (
+            <details className="mt-3">
+              <summary className="text-xs cursor-pointer" style={{ color: "var(--color-muted)" }}>
+                Alert me if this stops running
+              </summary>
+              <div className="mt-2">
+                <Field label="monitor ping URL (Uptime Kuma push)">
+                  <input
+                    value={flow.heartbeatUrl ?? ""}
+                    onChange={(e) => patch({ heartbeatUrl: e.target.value })}
+                    placeholder="https://uptime.example.com/api/push/AbC123"
+                    className="w-full rounded-lg px-3 py-2 font-mono text-xs outline-none"
+                    style={inputStyle}
+                  />
+                </Field>
+                <p className="text-[0.7rem] mt-1" style={{ color: "var(--color-muted)" }}>
+                  NodeWorm pings this after every successful run. If a run is missed, your monitor raises the alert.
+                </p>
+              </div>
+            </details>
           )}
         </div>
 
@@ -666,6 +689,23 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
         </div>
 
         <div className="card p-5">
+          {(() => {
+            const err = lastError(runs);
+            if (!err) return null;
+            return (
+              <div className="rounded-xl px-3 py-2.5 mb-3" style={{ border: "1px solid color-mix(in srgb, var(--color-blocked) 45%, transparent)" }}>
+                <div className="text-xs font-semibold" style={{ color: "var(--color-blocked)" }}>
+                  Last error {err.step ? `on "${err.step}"` : ""}
+                </div>
+                <div className="text-xs mt-0.5" style={{ color: "var(--color-ink-soft)" }}>
+                  {err.reason}
+                </div>
+                <div className="text-[0.66rem] mt-1" style={{ color: "var(--color-muted)" }}>
+                  {timeAgo(err.at, Date.now())}
+                </div>
+              </div>
+            );
+          })()}
           <div className="font-display font-bold text-base mb-3">History</div>
           {runs.length === 0 ? (
             <p className="text-sm" style={{ color: "var(--color-muted)" }}>
@@ -711,7 +751,7 @@ function StepCard({
   const catalog = step.integrationId ? catalogs[step.integrationId] : undefined;
   const usesConnection = step.type === "http" || step.type === "connector" || step.type === "mcp";
   const usesBody = step.type === "http" || step.type === "connector" || step.type === "webhook-out";
-  const isEffect = step.type !== "filter" && step.type !== "branch";
+  const isEffect = step.type !== "filter" && step.type !== "branch" && step.type !== "wait";
 
   const wantApp = step.appName?.trim().toLowerCase();
   const hasMatch = wantApp ? connections.some((c) => c.appName.trim().toLowerCase() === wantApp) : true;
@@ -925,6 +965,23 @@ function StepCard({
                 )}
               </div>
             </>
+          )}
+
+          {step.type === "wait" && (
+            <Field label="pause for">
+              <select
+                value={step.waitMs ?? 60000}
+                onChange={(e) => onChange({ waitMs: Number(e.target.value) })}
+                className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                style={inputStyle}
+              >
+                <option value={60000}>1 minute</option>
+                <option value={300000}>5 minutes</option>
+                <option value={900000}>15 minutes</option>
+                <option value={3600000}>1 hour</option>
+                <option value={86400000}>1 day</option>
+              </select>
+            </Field>
           )}
 
           {(usesBody || isEffect) && (

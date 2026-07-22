@@ -4,7 +4,8 @@
 
 import type { Flow, FlowBranch, FlowCondition, FlowStep, FlowStepType, FlowTrigger } from "./types";
 
-const STEP_TYPES: FlowStepType[] = ["http", "connector", "ai", "filter", "webhook-out", "mcp", "branch"];
+const STEP_TYPES: FlowStepType[] = ["http", "connector", "ai", "filter", "webhook-out", "mcp", "branch", "wait"];
+export const MAX_WAIT_MS = 7 * 24 * 60 * 60 * 1000; // a week is plenty; keeps a typo from parking a run forever
 const OPS = new Set(["eq", "neq", "contains", "exists", "gt", "lt"]);
 export const MAX_STEPS = 20;
 export const MIN_SCHEDULE_MINS = 5;
@@ -70,6 +71,10 @@ function sanitizeStep(v: unknown, i: number, insideBranch = false): FlowStep | n
   step.condition = sanitizeCondition(s.condition);
   const retries = Number(s.retries);
   if (Number.isFinite(retries) && retries >= 1) step.retries = Math.min(2, Math.floor(retries));
+  if (step.type === "wait") {
+    const w = Number(s.waitMs);
+    step.waitMs = Number.isFinite(w) && w > 0 ? Math.min(MAX_WAIT_MS, Math.floor(w)) : 60_000;
+  }
   if (s.onError === "continue") step.onError = "continue";
   if (step.type === "branch" && Array.isArray(s.branches)) {
     step.branches = s.branches
@@ -117,6 +122,7 @@ export function applyPatch(f: Flow, patch: Record<string, unknown>): Flow {
   if (typeof patch.name === "string" && patch.name.trim()) out.name = patch.name.trim().slice(0, 120);
   if (typeof patch.description === "string") out.description = patch.description.slice(0, 500);
   if (typeof patch.enabled === "boolean") out.enabled = patch.enabled;
+  if (typeof patch.heartbeatUrl === "string") out.heartbeatUrl = patch.heartbeatUrl.trim().slice(0, 400) || undefined;
   out.trigger = sanitizeTrigger(patch.trigger, f.trigger);
   if (Array.isArray(patch.steps)) {
     out.steps = patch.steps

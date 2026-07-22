@@ -159,6 +159,20 @@ export async function saveRun(run: FlowRun): Promise<void> {
   );
 }
 
+// Runs the resume sweep should consider: parked at a wait, or still marked
+// running (their process died). Bounded so one sweep can never run away.
+export async function listUnfinishedRuns(limit = 50): Promise<FlowRun[]> {
+  if (sql) {
+    await ensureSchema();
+    const rows = (await sql`SELECT data FROM flow_runs WHERE status IN ('waiting','running') ORDER BY created_at ASC LIMIT ${limit}`) as Array<{ data: FlowRun }>;
+    return rows.map((r) => r.data);
+  }
+  return load(RUNS_FILE, runCache)
+    .filter((r) => r.status === "waiting" || r.status === "running")
+    .sort((a, b) => a.startedAt - b.startedAt)
+    .slice(0, limit);
+}
+
 export async function listRuns(flowId: string, limit = 30): Promise<FlowRun[]> {
   if (sql) {
     await ensureSchema();

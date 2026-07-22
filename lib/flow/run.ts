@@ -2,6 +2,7 @@
 // effects (same doctrine as autobuild.ts). Persists honestly: every step result
 // is real, failures stop the run, outputs are bounded before they hit storage.
 
+import { contextFromRun } from "./durable";
 import { renderJson, renderValue } from "./template";
 import type { Flow, FlowCondition, FlowRun, FlowStep, FlowTriggerType, StepRun } from "./types";
 
@@ -87,6 +88,8 @@ function shortId(): string {
 
 export interface ExecOpts {
   backoffMs?: (attempt: number) => number;
+  // Continue a persisted run from its cursor instead of starting a new one.
+  resume?: FlowRun;
 }
 
 const MAX_EXTRA_RETRIES = 2;
@@ -98,21 +101,28 @@ export async function executeFlow(
   onTransition?: (run: FlowRun) => Promise<void>,
   opts?: ExecOpts,
 ): Promise<FlowRun> {
-  const run: FlowRun = {
-    id: shortId(),
-    flowId: flow.id,
-    status: "running",
-    trigger: { type: fire.type, summary: fire.summary },
-    startedAt: Date.now(),
-    steps: [],
-  };
-  const ctx: Record<string, unknown> = { trigger: fire.payload, steps: {} };
+  const resuming = opts?.resume;
+  const run: FlowRun = resuming
+    ? { ...resuming, status: "running", resumeAt: undefined, attempt: (resuming.attempt ?? 0) + 1 }
+    : {
+        id: shortId(),
+        flowId: flow.id,
+        status: "running",
+        trigger: { type: fire.type, summary: fire.summary, payload: boundOutput(fire.payload) },
+        startedAt: Date.now(),
+        cursor: 0,
+        steps: [],
+      };
+  // On resume the context is rebuilt from what was persisted, so templates over
+  // earlier steps and the original trigger still resolve.
+  const ctx: Record<string, unknown> = resuming ? contextFromRun(resuming) : { trigger: fire.payload, steps: {} };
   const backoff = opts?.backoffMs ?? ((attempt: number) => attempt * 1000);
   let halted: "failed" | "filtered" | null = null;
+  let parked = false;
   let anyFailed = false;
 
   async function transition(): Promise<void> {
-    run.status = halted ?? "running";
+    if (!parked) run.status = halted ?? "running";
     if (onTransition) await onTransition(run);
   }
 
@@ -201,14 +211,32 @@ export async function executeFlow(
     }
   }
 
-  for (const step of flow.steps) {
+  for (let i = run.cursor ?? 0; i < flow.steps.length; i++) {
+    const step = flow.steps[i];
     if (halted) {
       markSkipped([step], undefined, halted === "failed" ? "skipped: an earlier step failed" : "skipped: filtered out");
+      run.cursor = i + 1;
       await transition();
       continue;
     }
+
+    // A wait parks the run: record it, point the cursor past it, and hand back to
+    // the resume sweep. Nothing after it runs in this invocation.
+    if (step.type === "wait") {
+      const at = Date.now();
+      const waitMs = Math.max(0, step.waitMs ?? 0);
+      run.steps.push({ stepId: step.id, name: step.name, type: step.type, status: "ok", startedAt: at, finishedAt: at, summary: `waiting ${Math.round(waitMs / 1000)}s` });
+      run.cursor = i + 1;
+      run.resumeAt = at + waitMs;
+      run.status = "waiting";
+      parked = true;
+      if (onTransition) await onTransition(run);
+      return run;
+    }
+
     const signal = await runStep(step);
     if (signal) halted = signal;
+    run.cursor = i + 1;
   }
 
   run.status = halted === "failed" ? "failed" : halted === "filtered" ? "filtered" : anyFailed ? "partial" : "ok";

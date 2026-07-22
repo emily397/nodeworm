@@ -3,7 +3,7 @@
 // injected here from the vault and never lives on the flow definition.
 
 import { assertConnectorUrl } from "../engine/connector";
-import { chatJson, isLlmEnabled } from "../engine/llm";
+import { chatJson, isLlmEnabled, SpendCapError } from "../engine/llm";
 import { clientCreds, providerFor, refreshAccessToken } from "../engine/oauth";
 import { shouldRefresh } from "../engine/refresh";
 import type { Integration } from "../engine/types";
@@ -123,10 +123,17 @@ export function realEffects(getIntegration: (id: string) => Promise<Integration 
 
     async ai(step, input) {
       if (!input.prompt) return { ok: false, summary: "no instruction configured on this AI step" };
-      if (!isLlmEnabled()) return { ok: false, summary: "no AI model available (set GROQ_API_KEY or OPENROUTER_API_KEY)" };
-      const data = await chatJson(AI_SYSTEM, input.prompt);
-      if (!data) return { ok: false, summary: "every model in the cascade failed" };
-      return { ok: true, summary: "model replied", output: data.result ?? data };
+      if (!isLlmEnabled()) return { ok: false, summary: "AI is not available on this account yet" };
+      let data: Record<string, unknown> | null;
+      try {
+        data = await chatJson(AI_SYSTEM, input.prompt);
+      } catch (e) {
+        // A budget stop is a real, actionable failure, not a flaky model.
+        if (e instanceof SpendCapError) return { ok: false, summary: e.message };
+        throw e;
+      }
+      if (!data) return { ok: false, summary: "the AI step could not produce a result" };
+      return { ok: true, summary: "AI replied", output: data.result ?? data };
     },
 
     async mcp(step, input) {
