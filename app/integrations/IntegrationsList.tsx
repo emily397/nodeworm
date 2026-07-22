@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import type { Integration } from "@/lib/engine/types";
 import { StatusChip } from "@/app/components/ui";
+import { BrandLogo } from "@/app/components/BrandLogo";
 import { timeAgo } from "@/app/components/status";
 
 // Live connector health, surfaced from the Phase 4 monitor. A verified connector
@@ -79,10 +80,7 @@ export function IntegrationsList({ initial }: { initial: Integration[] }) {
           <div className="flex flex-wrap items-center gap-4">
             <Link href={`/run/${it.id}`} className="flex-1 min-w-[200px] group">
               <div className="flex items-center gap-3">
-                <span
-                  className="dot"
-                  style={{ width: 10, height: 10, background: it.mode === "ai" ? "var(--color-live)" : "var(--color-line-2)" }}
-                />
+                <BrandLogo name={it.appName} size={36} />
                 <div>
                   <div className="font-display font-bold text-lg leading-tight group-hover:underline decoration-dotted">
                     {it.appName}

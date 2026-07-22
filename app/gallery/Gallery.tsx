@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { NODES, WORMS, CATEGORY_COLOR, CATEGORY_LABEL, monogram, type Node, type NodeCategory, type Worm } from "@/lib/catalog";
+import { NODES, WORMS, CATEGORY_COLOR, CATEGORY_LABEL, type Node, type NodeCategory, type Worm } from "@/lib/catalog";
+import { BrandLogo } from "@/app/components/BrandLogo";
 import { WormComposer } from "./WormComposer";
 
 export interface MyWorm {
@@ -270,24 +271,10 @@ function SectionLabel({ n, children }: { n: string; children: React.ReactNode })
   );
 }
 
-// A monogram chip for a node, used inside worm cards + the pond grid.
-function Chip({ name, category, size = 34 }: { name: string; category: Node["category"]; size?: number }) {
-  const c = CATEGORY_COLOR[category];
-  return (
-    <span
-      className="grid place-items-center rounded-lg font-display font-bold shrink-0"
-      style={{
-        width: size,
-        height: size,
-        fontSize: size * 0.4,
-        color: c,
-        background: `color-mix(in srgb, ${c} 15%, var(--color-paper))`,
-        border: `1px solid color-mix(in srgb, ${c} 40%, transparent)`,
-      }}
-    >
-      {monogram(name)}
-    </span>
-  );
+// A real brand logo for a node, used inside worm cards + the pond grid. Falls
+// back to a category-colored monogram for apps without a brand mark.
+function Chip({ name, size = 34 }: { name: string; category?: Node["category"]; size?: number }) {
+  return <BrandLogo name={name} size={size} />;
 }
 
 function WormCard({ worm, delay, busy, onCast, wide }: { worm: Worm; delay: number; busy: boolean; onCast: () => void; wide?: boolean }) {

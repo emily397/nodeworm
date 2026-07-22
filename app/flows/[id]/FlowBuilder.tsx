@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { BrandLogo } from "@/app/components/BrandLogo";
 import { timeAgo } from "@/app/components/status";
 import type { Integration } from "@/lib/engine/types";
 import type { FlowAction } from "@/lib/flow/actions";
@@ -337,7 +338,11 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
         <div className="card-pop p-5 mb-1 relative">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-2.5">
-              <span className="dot" style={{ width: 12, height: 12, background: "var(--color-teal)" }} />
+              {flow.trigger.appName ? (
+                <BrandLogo name={flow.trigger.appName} size={28} className="logo-pop" />
+              ) : (
+                <span className="dot" style={{ width: 12, height: 12, background: "var(--color-teal)" }} />
+              )}
               <span className="font-display font-bold">When should this run?</span>
               {flow.trigger.appName && (
                 <span className="text-xs" style={{ color: "var(--color-muted)" }}>
@@ -724,6 +729,11 @@ function StepCard({
   return (
     <div className={insideBranch ? "card p-3" : "card p-4"} style={{ borderColor: `color-mix(in srgb, ${color} 30%, var(--color-line))` }}>
       <div className="flex items-center gap-3">
+        {step.appName ? (
+          <BrandLogo name={step.appName} size={26} className="logo-pop" />
+        ) : (
+          <span className="dot" style={{ width: 10, height: 10, background: color }} />
+        )}
         <span className="text-[0.66rem] px-2 py-0.5 rounded font-semibold" style={{ color, border: `1px solid color-mix(in srgb, ${color} 45%, transparent)` }}>
           {STEP_LABELS[step.type]}
         </span>

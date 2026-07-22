@@ -3,16 +3,32 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { BrandLogo } from "@/app/components/BrandLogo";
 import { timeAgo } from "@/app/components/status";
+import { LogoCloud } from "@/app/components/LogoCloud";
 import { TEMPLATES } from "@/lib/flow/templates";
-import type { Flow } from "@/lib/flow/types";
+import type { Flow, FlowStep, FlowTrigger } from "@/lib/flow/types";
 import { STEP_COLORS, TRIGGER_CHIP, TRIGGER_LABEL } from "./meta";
 
 const EXAMPLES = [
-  "When a Stripe payment succeeds, add a row in Notion and message Slack",
-  "Every morning, summarise yesterday's Shopify orders with AI and email me",
-  "When a Typeform response lands, create a GitHub issue",
+  { text: "When a Stripe payment succeeds, add a row in Notion and message Slack", apps: ["Stripe", "Notion", "Slack"] },
+  { text: "Every morning, summarise yesterday's Shopify orders with AI and email me", apps: ["Shopify", "Gmail"] },
+  { text: "When a Typeform response lands, create a GitHub issue", apps: ["Typeform", "GitHub"] },
 ];
+
+// The distinct apps a template/flow touches, trigger first, for a logo row.
+function flowApps(trigger: FlowTrigger, steps: FlowStep[]): string[] {
+  const names: string[] = [];
+  const add = (n?: string) => {
+    if (n && !names.some((x) => x.toLowerCase() === n.toLowerCase())) names.push(n);
+  };
+  add(trigger.appName);
+  for (const s of steps) {
+    add(s.appName);
+    for (const b of s.branches ?? []) for (const inner of b.steps) add(inner.appName);
+  }
+  return names;
+}
 
 export function FlowsHome({ initial }: { initial: Flow[] }) {
   const router = useRouter();
@@ -113,48 +129,74 @@ export function FlowsHome({ initial }: { initial: Flow[] }) {
           </div>
         )}
 
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-col gap-2">
           {EXAMPLES.map((ex) => (
             <button
-              key={ex}
-              onClick={() => setPrompt(ex)}
-              className="text-xs px-2.5 py-1.5 rounded-lg text-left transition-colors hover:underline decoration-dotted"
-              style={{ color: "var(--color-muted)", border: "1px solid var(--color-line)" }}
+              key={ex.text}
+              onClick={() => setPrompt(ex.text)}
+              className="flex items-center gap-2.5 text-sm px-3 py-2 rounded-xl text-left transition-transform hover:-translate-y-0.5"
+              style={{ color: "var(--color-ink-soft)", border: "1px solid var(--color-line)", background: "var(--color-paper)" }}
             >
-              {ex}
+              <span className="flex items-center -space-x-1.5">
+                {ex.apps.map((a) => (
+                  <BrandLogo key={a} name={a} size={22} className="ring-2" />
+                ))}
+              </span>
+              <span className="min-w-0">{ex.text}</span>
             </button>
           ))}
         </div>
       </div>
 
+      {/* Marketing: real logos, the apps this works with. */}
+      <div>
+        <p className="text-center text-xs uppercase tracking-[0.2em] mb-4" style={{ color: "var(--color-muted)" }}>
+          Connects the apps you already use
+        </p>
+        <LogoCloud />
+      </div>
+
       <div>
         <div className="font-display font-bold text-base mb-4">Or pick a ready-made template</div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {TEMPLATES.map((t, i) => (
-            <button
-              key={t.id}
-              onClick={() => fromTemplate(t.id)}
-              disabled={busy}
-              className="card p-4 text-left rise transition-transform hover:-translate-y-0.5"
-              style={{ animationDelay: `${i * 40}ms` }}
-            >
-              <div className="font-display font-bold text-[0.95rem] leading-tight mb-1">{t.name}</div>
-              <div className="font-mono text-[0.66rem] mb-2.5" style={{ color: "var(--color-muted)" }}>
-                {t.blurb}
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-mono text-[0.6rem] uppercase tracking-wider" style={{ color: "var(--color-muted)" }}>
-                  {TRIGGER_LABEL[t.trigger.type]}
-                </span>
-                <span className="font-mono text-[0.6rem]" style={{ color: "var(--color-line-2)" }}>
-                  →
-                </span>
-                {t.steps.flatMap((s) => [s, ...(s.branches?.flatMap((b) => b.steps) ?? [])]).map((s, j) => (
-                  <span key={j} className="dot" style={{ width: 7, height: 7, background: STEP_COLORS[s.type] }} />
-                ))}
-              </div>
-            </button>
-          ))}
+          {TEMPLATES.map((t, i) => {
+            const apps = flowApps(t.trigger, t.steps);
+            return (
+              <button
+                key={t.id}
+                onClick={() => fromTemplate(t.id)}
+                disabled={busy}
+                className="card p-4 text-left rise transition-transform hover:-translate-y-1"
+                style={{ animationDelay: `${i * 40}ms` }}
+              >
+                {apps.length > 0 && (
+                  <div className="flex items-center gap-1.5 mb-3">
+                    {apps.slice(0, 4).map((a, j) => (
+                      <span key={a} className="flex items-center gap-1.5">
+                        {j > 0 && <span style={{ color: "var(--color-line-2)" }}>→</span>}
+                        <BrandLogo name={a} size={28} />
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="font-display font-bold text-[0.95rem] leading-tight mb-1">{t.name}</div>
+                <div className="text-xs mb-3" style={{ color: "var(--color-muted)" }}>
+                  {t.blurb}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[0.62rem] uppercase tracking-wider" style={{ color: "var(--color-muted)" }}>
+                    {TRIGGER_LABEL[t.trigger.type]}
+                  </span>
+                  <span className="text-[0.6rem]" style={{ color: "var(--color-line-2)" }}>
+                    →
+                  </span>
+                  {t.steps.flatMap((s) => [s, ...(s.branches?.flatMap((b) => b.steps) ?? [])]).map((s, j) => (
+                    <span key={j} className="dot" style={{ width: 7, height: 7, background: STEP_COLORS[s.type] }} />
+                  ))}
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -174,10 +216,21 @@ export function FlowsHome({ initial }: { initial: Flow[] }) {
           </div>
         ) : (
           <div className="space-y-2.5">
-            {flows.map((f, i) => (
+            {flows.map((f, i) => {
+              const apps = flowApps(f.trigger, f.steps);
+              return (
               <div key={f.id} className="card p-4 sm:p-5 rise" style={{ animationDelay: `${i * 40}ms` }}>
                 <div className="flex flex-wrap items-center gap-4">
-                  <Link href={`/flows/${f.id}`} className="flex-1 min-w-[220px] group">
+                  {apps.length > 0 && (
+                    <span className="flex items-center -space-x-2 shrink-0">
+                      {apps.slice(0, 3).map((a) => (
+                        <span key={a} className="rounded-lg" style={{ boxShadow: "0 0 0 2px var(--color-card)" }}>
+                          <BrandLogo name={a} size={32} />
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                  <Link href={`/flows/${f.id}`} className="flex-1 min-w-[200px] group">
                     <div className="font-display font-bold text-lg leading-tight group-hover:underline decoration-dotted">
                       {f.name}
                     </div>
@@ -218,7 +271,8 @@ export function FlowsHome({ initial }: { initial: Flow[] }) {
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

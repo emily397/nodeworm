@@ -371,6 +371,68 @@ a {
   animation: rise 0.62s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
+/* Logo cloud: two seamless tracks scrolling opposite directions, edges masked. */
+.logo-marquee {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.logo-track {
+  display: flex;
+  gap: 1.1rem;
+  width: max-content;
+  animation: marquee 38s linear infinite;
+}
+.logo-track.reverse {
+  animation-direction: reverse;
+  animation-duration: 46s;
+}
+.logo-marquee:hover .logo-track {
+  animation-play-state: paused;
+}
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+/* Gentle idle bob for hero logo constellations. */
+.logo-float {
+  animation: logo-float 4.5s ease-in-out infinite;
+}
+@keyframes logo-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+/* Soft entrance pop for a logo pair. */
+.logo-pop {
+  animation: logo-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+}
+@keyframes logo-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .logo-track,
+  .logo-float,
+  .logo-pop {
+    animation: none;
+  }
+}
+
 /* Gallery: nodes + worms. Tiles lift on hover; the worm slides along its line. */
 .node-tile:hover,
 .worm-card:hover {

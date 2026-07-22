@@ -5,8 +5,10 @@ import { KNOWLEDGE } from "@/lib/engine/knowledge";
 import { BridgeConsole } from "./components/BridgeConsole";
 import { StatusChip, SectionLabel } from "./components/ui";
 import { timeAgo } from "./components/status";
-import { WORMS, NODES, CATEGORY_COLOR, monogram } from "@/lib/catalog";
+import { WORMS } from "@/lib/catalog";
 import { Reveal } from "./components/Reveal";
+import { BrandLogo } from "./components/BrandLogo";
+import { LogoCloud } from "./components/LogoCloud";
 
 export const dynamic = "force-dynamic";
 
@@ -106,6 +108,14 @@ export default async function Home() {
         </div>
       </section>
 
+      {/* Real logos: the apps NodeWorm connects. */}
+      <Reveal as="section" className="pt-2 pb-10">
+        <p className="text-center text-xs uppercase tracking-[0.2em] mb-5" style={{ color: "var(--color-muted)" }}>
+          Works with the apps you already use
+        </p>
+        <LogoCloud />
+      </Reveal>
+
       {/* Gallery teaser */}
       <Reveal>
         <GalleryTeaser />
@@ -166,12 +176,15 @@ export default async function Home() {
               <Link key={b.id} href={`/bridge/${b.id}`} className="group">
                 <div className="card p-5 h-full transition-transform group-hover:-translate-y-1">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="font-display font-bold text-lg leading-tight flex items-center gap-2 flex-wrap">
-                      <span>{b.sourceName}</span>
+                    <div className="font-display font-bold text-base leading-tight flex items-center gap-2 flex-wrap">
+                      <BrandLogo name={b.sourceName} size={28} />
                       <span style={{ color: "var(--color-signal)" }}>
                         {b.flow?.direction === "bidirectional" ? "⇄" : b.flow?.direction === "b-to-a" ? "←" : "→"}
                       </span>
-                      <span>{b.targetName}</span>
+                      <BrandLogo name={b.targetName} size={28} />
+                      <span className="ml-1">
+                        {b.sourceName} to {b.targetName}
+                      </span>
                     </div>
                     <StatusChip status={b.status} />
                   </div>
@@ -201,10 +214,13 @@ export default async function Home() {
               <Link key={it.id} href={`/run/${it.id}`} className="group">
                 <div className="card p-5 h-full transition-transform group-hover:-translate-y-1">
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-display font-bold text-lg leading-tight">{it.appName}</div>
-                      <div className="font-mono text-xs mt-0.5" style={{ color: "var(--color-muted)" }}>
-                        {it.discovery?.category ?? "queued"}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <BrandLogo name={it.appName} size={38} />
+                      <div className="min-w-0">
+                        <div className="font-display font-bold text-lg leading-tight truncate">{it.appName}</div>
+                        <div className="font-mono text-xs mt-0.5" style={{ color: "var(--color-muted)" }}>
+                          {it.discovery?.category ?? "queued"}
+                        </div>
                       </div>
                     </div>
                     <StatusChip status={it.status} />
@@ -236,19 +252,6 @@ function Connector() {
 
 // Landing teaser that hits with the breadth: nodes + worms + go-fish, one link away.
 function GalleryTeaser() {
-  const mono = (name: string) => {
-    const n = NODES.find((x) => x.name === name);
-    const c = n ? CATEGORY_COLOR[n.category] : "var(--color-signal)";
-    return (
-      <span
-        key={name}
-        className="grid place-items-center rounded-md font-display font-bold shrink-0"
-        style={{ width: 30, height: 30, fontSize: 12, color: c, background: `color-mix(in srgb, ${c} 15%, var(--color-paper))`, border: `1px solid color-mix(in srgb, ${c} 40%, transparent)` }}
-      >
-        {monogram(name)}
-      </span>
-    );
-  };
   const picks = WORMS.slice(0, 4);
   return (
     <section className="py-14">
@@ -273,14 +276,14 @@ function GalleryTeaser() {
               <Link
                 key={w.prompt}
                 href="/gallery"
-                className="card p-3 flex items-center gap-2 transition-transform hover:-translate-y-0.5"
+                className="card p-3 flex items-center gap-2 transition-transform hover:-translate-y-1"
                 style={{ background: "var(--color-paper)" }}
               >
-                {mono(w.from)}
-                <span className="font-mono text-[0.6rem]" style={{ color: "var(--color-signal)" }}>~</span>
-                {mono(w.to)}
-                <span className="text-[0.72rem] leading-tight ml-1" style={{ color: "var(--color-ink-soft)" }}>
-                  {w.from} → {w.to}
+                <BrandLogo name={w.from} size={30} />
+                <span className="text-[0.7rem]" style={{ color: "var(--color-signal)" }}>→</span>
+                <BrandLogo name={w.to} size={30} />
+                <span className="text-[0.75rem] leading-tight ml-1 font-medium" style={{ color: "var(--color-ink-soft)" }}>
+                  {w.from} to {w.to}
                 </span>
               </Link>
             ))}
