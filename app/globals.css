@@ -371,6 +371,102 @@ a {
   animation: rise 0.62s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
+/* Hero constellation: real app logos wired into the hub, pulses riding the wires. */
+.constellation-wire {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-signal) 35%, var(--color-line-2));
+  stroke-width: 1.5;
+  stroke-dasharray: 6 7;
+  animation: wire-flow 1.6s linear infinite;
+}
+@keyframes wire-flow {
+  to {
+    stroke-dashoffset: -13;
+  }
+}
+.constellation-pulse {
+  offset-rotate: 0deg;
+  animation: ride-wire 3.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes ride-wire {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+.hub-glow {
+  animation: hub-breathe 3.4s ease-in-out infinite;
+}
+@keyframes hub-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-signal) 40%, transparent), 0 10px 40px -12px color-mix(in srgb, var(--color-signal) 55%, transparent);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 14px color-mix(in srgb, var(--color-signal) 0%, transparent), 0 14px 52px -10px color-mix(in srgb, var(--color-signal) 70%, transparent);
+    transform: scale(1.04);
+  }
+}
+/* CTA shimmer: a light sweep across the primary button, occasionally. */
+.btn-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.btn-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: -150% -60%;
+  transform: rotate(20deg) translateX(-120%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  animation: shimmer-sweep 4.2s ease-in-out infinite;
+}
+@keyframes shimmer-sweep {
+  0%,
+  55% {
+    transform: rotate(20deg) translateX(-130%);
+  }
+  75%,
+  100% {
+    transform: rotate(20deg) translateX(130%);
+  }
+}
+/* Stat band numbers pop in with a slight overshoot. */
+.stat-pop {
+  animation: stat-pop 0.7s cubic-bezier(0.2, 0.9, 0.3, 1.35) both;
+}
+@keyframes stat-pop {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .constellation-wire,
+  .hub-glow,
+  .btn-shimmer::after,
+  .stat-pop {
+    animation: none;
+  }
+  .motion-only {
+    display: none;
+  }
+}
+
 /* Logo cloud: two seamless tracks scrolling opposite directions, edges masked. */
 .logo-marquee {
   overflow: hidden;
