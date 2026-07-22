@@ -1,62 +1,35 @@
 import Link from "next/link";
-import { listBridges, listIntegrations } from "@/lib/store";
-import { isLlmEnabled } from "@/lib/engine/llm";
-import { KNOWLEDGE } from "@/lib/engine/knowledge";
-import { BridgeConsole } from "./components/BridgeConsole";
-import { StatusChip, SectionLabel } from "./components/ui";
-import { timeAgo } from "./components/status";
 import { WORMS } from "@/lib/catalog";
 import { Reveal } from "./components/Reveal";
 import { BrandLogo } from "./components/BrandLogo";
 import { Constellation, HomeHero } from "./components/HomeHero";
+import { FlowShowcase } from "./components/FlowShowcase";
 import { LogoCloud } from "./components/LogoCloud";
 
 export const dynamic = "force-dynamic";
 
+// The five agents, in plain English. The engine's own names stay as flavor; the
+// descriptions carry no jargon.
 const AGENTS = [
-  {
-    n: "01",
-    agent: "Scout",
-    label: "Discovery",
-    desc: "Searches API docs, MCP registries and developer portals to map the integration surface.",
-    color: "var(--color-aqua)",
-  },
-  {
-    n: "02",
-    agent: "Architect",
-    label: "Credentials",
-    desc: "Picks the path: hosted MCP, a custom MCP build, or a browser fallback. Always OAuth, never an API key.",
-    color: "var(--color-signal)",
-  },
-  {
-    n: "03",
-    agent: "Wire",
-    label: "Sync",
-    desc: "Designs bidirectional sync: outbound tools plus webhooks, polling or entity mirroring.",
-    color: "var(--color-berry)",
-  },
-  {
-    n: "04",
-    agent: "Auditor",
-    label: "Verify",
-    desc: "Tests connectivity, auth persistence, write round-trips and inbound delivery.",
-    color: "var(--color-amber)",
-  },
-  {
-    n: "05",
-    agent: "Relay",
-    label: "Handoff",
-    desc: "Reports what works and surfaces the one action you still need to take.",
-    color: "var(--color-teal)",
-  },
+  { n: "01", agent: "Scout", label: "Finds the way in", desc: "Works out how an app can connect, even when it comes with no instructions.", color: "var(--color-aqua)" },
+  { n: "02", agent: "Architect", label: "Handles sign-in", desc: "Picks the safest route. You click sign in once; your keys stay sealed away.", color: "var(--color-signal)" },
+  { n: "03", agent: "Wire", label: "Connects the dots", desc: "Hooks up both directions: things that happen, and things to do about them.", color: "var(--color-berry)" },
+  { n: "04", agent: "Auditor", label: "Proves it works", desc: "Tests everything for real. Nothing gets called connected until it is.", color: "var(--color-amber)" },
+  { n: "05", agent: "Relay", label: "Hands it over", desc: "Shows you what works and the one thing left to click, if there is one.", color: "var(--color-teal)" },
 ];
 
-export default async function Home() {
-  const [allBridges, allRuns] = await Promise.all([listBridges(), listIntegrations()]);
-  const bridges = allBridges.slice(0, 6);
-  const recent = allRuns.slice(0, 6);
-  const now = Date.now();
+function H2({ eyebrow, children }: { eyebrow: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-7">
+      <div className="text-xs uppercase tracking-[0.2em] mb-2" style={{ color: "var(--color-signal)" }}>
+        {eyebrow}
+      </div>
+      <h2 className="font-display font-extrabold text-[clamp(1.7rem,3.6vw,2.5rem)] leading-tight">{children}</h2>
+    </div>
+  );
+}
 
+export default function Home() {
   return (
     <div className="mx-auto max-w-6xl px-5">
       {/* Hero: the composer IS the product. Type it, watch it build itself. */}
@@ -79,10 +52,7 @@ export default async function Home() {
             <HomeHero />
           </div>
 
-          <div
-            className="rise mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs"
-            style={{ animationDelay: "260ms", color: "var(--color-muted)" }}
-          >
+          <div className="rise mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs" style={{ animationDelay: "260ms", color: "var(--color-muted)" }}>
             <span className="flex items-center gap-1.5">
               <span className="dot" style={{ background: "var(--color-live)" }} />
               No code, ever
@@ -111,9 +81,38 @@ export default async function Home() {
         <LogoCloud />
       </Reveal>
 
+      {/* Watch one run: the product's output, not its internals. */}
+      <Reveal as="section" className="py-12">
+        <div className="grid lg:grid-cols-[0.9fr_1.1fr] gap-10 items-center">
+          <div>
+            <H2 eyebrow="See it work">
+              This ran while you
+              <br />
+              read this sentence<span className="gradient-text">.</span>
+            </H2>
+            <p className="text-base max-w-md" style={{ color: "var(--color-ink-soft)" }}>
+              One sentence built this whole thing: the trigger, the rule, the AI touch, the message. It has
+              been running itself ever since.
+            </p>
+            <ul className="mt-5 space-y-2.5 text-sm" style={{ color: "var(--color-ink-soft)" }}>
+              {["Every step shows exactly what happened, in plain words", "Failures retry themselves, then tell you honestly", "Change anything by clicking it, not by reading docs"].map((t) => (
+                <li key={t} className="flex items-start gap-2.5">
+                  <span className="dot mt-1.5 shrink-0" style={{ background: "var(--color-live)" }} />
+                  {t}
+                </li>
+              ))}
+            </ul>
+            <Link href="/flows" className="btn btn-signal btn-shimmer text-sm mt-7 inline-flex">
+              Build yours in 30 seconds →
+            </Link>
+          </div>
+          <FlowShowcase />
+        </div>
+      </Reveal>
+
       {/* How it works: three moves, zero jargon. */}
       <Reveal as="section" className="py-12">
-        <SectionLabel n="01">How it works</SectionLabel>
+        <H2 eyebrow="How it works">Three moves, and the busywork is gone</H2>
         <div className="grid md:grid-cols-3 gap-4">
           {[
             { t: "Say it", d: "Type what should happen, the way you'd tell a colleague. No flowchart homework.", c: "var(--color-signal)" },
@@ -140,11 +139,11 @@ export default async function Home() {
       {/* Stat band: honest numbers, popped in. */}
       <Reveal as="section" className="py-10">
         <div className="card overflow-hidden p-8 sm:p-10" style={{ background: "linear-gradient(120deg, color-mix(in srgb, var(--color-signal) 10%, var(--color-paper-2)), var(--color-paper-2))" }}>
-          <div className="grid sm:grid-cols-4 gap-8 text-center">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 text-center">
             {[
-              { n: "19", l: "built-in connectors" },
-              { n: "ANY", l: "app via live discovery" },
-              { n: "8", l: "step types incl. AI + branching" },
+              { n: "19", l: "ready-made connectors" },
+              { n: "ANY", l: "app, found live" },
+              { n: "8", l: "step types incl. AI" },
               { n: "24/7", l: "self-healing runs" },
             ].map((s, i) => (
               <div key={s.l} className="stat-pop" style={{ animationDelay: `${i * 110}ms` }}>
@@ -158,31 +157,51 @@ export default async function Home() {
         </div>
       </Reveal>
 
-      {/* Gallery teaser */}
-      <Reveal>
-        <GalleryTeaser />
+      {/* Popular automations, with real logos. */}
+      <Reveal as="section" className="py-12">
+        <div className="card overflow-hidden" style={{ background: "var(--color-paper-2)" }}>
+          <div className="p-6 sm:p-8 grid lg:grid-cols-[1fr_1.1fr] gap-8 items-center">
+            <div>
+              <H2 eyebrow="Start in one click">
+                Steal one of these<span className="gradient-text">.</span>
+              </H2>
+              <p className="text-base max-w-md" style={{ color: "var(--color-ink-soft)" }}>
+                The most popular automations, ready to go. Pick one, sign in to the two apps, done. Or type
+                something nobody has ever automated before; NodeWorm will figure it out.
+              </p>
+              <Link href="/flows" className="btn btn-signal text-sm mt-6 inline-flex">
+                Browse all templates →
+              </Link>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-2.5">
+              {WORMS.slice(0, 6).map((w, i) => (
+                <Link
+                  key={w.prompt}
+                  href="/flows"
+                  className="card p-3.5 flex items-center gap-2.5 rise transition-transform hover:-translate-y-1"
+                  style={{ background: "var(--color-paper)", animationDelay: `${i * 60}ms` }}
+                >
+                  <BrandLogo name={w.from} size={32} />
+                  <span style={{ color: "var(--color-signal)" }}>→</span>
+                  <BrandLogo name={w.to} size={32} />
+                  <span className="text-[0.8rem] leading-tight ml-1 font-medium" style={{ color: "var(--color-ink-soft)" }}>
+                    {w.trigger}, {w.action}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
       </Reveal>
 
       {/* Why NodeWorm: the honest edge over the big names. */}
       <Reveal as="section" className="py-12">
-        <SectionLabel n="02">Why not just use the big guys?</SectionLabel>
+        <H2 eyebrow="The honest comparison">Why not just use the big guys?</H2>
         <div className="grid md:grid-cols-3 gap-4">
           {[
-            {
-              t: "They make you build. We build for you.",
-              d: "Elsewhere you drag boxes and read docs. Here you describe the outcome and edit what appears.",
-              c: "var(--color-signal)",
-            },
-            {
-              t: "They stop at their catalog. We don't.",
-              d: "If an app isn't on the list, NodeWorm scouts its real surface live and builds the connection anyway.",
-              c: "var(--color-aqua)",
-            },
-            {
-              t: "They shrug at failures. We don't.",
-              d: "Runs pick up where they left off after crashes, retry with backoff, and never fake a success.",
-              c: "var(--color-berry)",
-            },
+            { t: "They make you build. We build for you.", d: "Elsewhere you drag boxes and read docs. Here you describe the outcome and edit what appears.", c: "var(--color-signal)" },
+            { t: "They stop at their catalog. We don't.", d: "If an app isn't on the list, NodeWorm scouts its real surface live and builds the connection anyway.", c: "var(--color-aqua)" },
+            { t: "They shrug at failures. We don't.", d: "Runs pick up where they left off after crashes, retry with backoff, and never fake a success.", c: "var(--color-berry)" },
           ].map((s, i) => (
             <div key={s.t} className="card p-6 rise" style={{ animationDelay: `${i * 90}ms`, borderTop: `3px solid ${s.c}` }}>
               <div className="font-display font-bold text-lg leading-snug">{s.t}</div>
@@ -194,63 +213,29 @@ export default async function Home() {
         </div>
       </Reveal>
 
-      {/* Power tier: name any app, dispatch the swarm. */}
+      {/* The five agents, softened: visual candy with plain words. */}
       <Reveal as="section" className="py-12">
-        <SectionLabel n="03">Under the hood: name any app</SectionLabel>
-        <div className="grid lg:grid-cols-[1.05fr_0.95fr] gap-10 items-center">
-          <div>
-            <p className="text-base max-w-xl mb-6" style={{ color: "var(--color-ink-soft)" }}>
-              The engine underneath: five agents scout an app&apos;s real integration surface, run genuine
-              OAuth, and stand up a live connection, even for apps with no public API.
-            </p>
-            <BridgeConsole />
-            <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-2 font-mono text-xs" style={{ color: "var(--color-muted)" }}>
-              <span>5 agents</span>
-              <span className="opacity-40">/</span>
-              <span>{KNOWLEDGE.length} apps in the knowledge base</span>
-              <span className="opacity-40">/</span>
-              <span>{isLlmEnabled() ? "live discovery on" : "zero config, no keys needed"}</span>
-            </div>
-          </div>
-          <DecisionTree />
-        </div>
-      </Reveal>
-
-      {/* Pipeline */}
-      <Reveal as="section" className="py-14">
-        <SectionLabel n="//">The five-agent pipeline</SectionLabel>
+        <H2 eyebrow="Meet the crew">Five little robots do the boring part</H2>
         <div className="grid md:grid-cols-5 gap-3">
           {AGENTS.map((a, i) => (
             <div key={a.agent} className="relative">
               {i < AGENTS.length - 1 && (
-                <span
-                  className="pipe-arrow hidden md:block absolute top-7 -right-2 z-10"
-                  style={{ color: "var(--color-line-2)", animationDelay: `${i}s` }}
-                >
+                <span className="pipe-arrow hidden md:block absolute top-7 -right-2 z-10" style={{ color: "var(--color-line-2)", animationDelay: `${i}s` }}>
                   <Connector />
                 </span>
               )}
               <div
                 className="card card-pop h-full p-5 rise"
-                style={{
-                  animationDelay: `${i * 70}ms`,
-                  background: `linear-gradient(180deg, color-mix(in srgb, ${a.color} 9%, var(--color-card)), var(--color-card))`,
-                }}
+                style={{ animationDelay: `${i * 70}ms`, background: `linear-gradient(180deg, color-mix(in srgb, ${a.color} 9%, var(--color-card)), var(--color-card))` }}
               >
                 <div className="flex items-center justify-between mb-3">
-                  <span
-                    className="font-display font-extrabold text-xl leading-none"
-                    style={{ color: a.color }}
-                  >
+                  <span className="font-display font-extrabold text-xl leading-none" style={{ color: a.color }}>
                     {a.n}
                   </span>
                   <span className="dot stage-dot" style={{ background: a.color, color: a.color, width: 9, height: 9, animationDelay: `${i}s` }} />
                 </div>
                 <div className="font-display font-bold text-lg leading-none">{a.agent}</div>
-                <div
-                  className="font-mono text-[0.68rem] uppercase tracking-wider mt-1 mb-3"
-                  style={{ color: a.color }}
-                >
+                <div className="text-[0.7rem] font-semibold mt-1 mb-3" style={{ color: a.color }}>
                   {a.label}
                 </div>
                 <p className="text-sm leading-snug" style={{ color: "var(--color-ink-soft)" }}>
@@ -260,78 +245,6 @@ export default async function Home() {
             </div>
           ))}
         </div>
-      </Reveal>
-
-      {/* Recent bridges */}
-      {bridges.length > 0 && (
-        <Reveal as="section" className="py-10">
-          <SectionLabel n="//">Recent bridges</SectionLabel>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {bridges.map((b) => (
-              <Link key={b.id} href={`/bridge/${b.id}`} className="group">
-                <div className="card p-5 h-full transition-transform group-hover:-translate-y-1">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="font-display font-bold text-base leading-tight flex items-center gap-2 flex-wrap">
-                      <BrandLogo name={b.sourceName} size={28} />
-                      <span style={{ color: "var(--color-signal)" }}>
-                        {b.flow?.direction === "bidirectional" ? "⇄" : b.flow?.direction === "b-to-a" ? "←" : "→"}
-                      </span>
-                      <BrandLogo name={b.targetName} size={28} />
-                      <span className="ml-1">
-                        {b.sourceName} to {b.targetName}
-                      </span>
-                    </div>
-                    <StatusChip status={b.status} />
-                  </div>
-                  <div className="mt-4 flex items-center justify-between font-mono text-xs" style={{ color: "var(--color-muted)" }}>
-                    <span>{b.flow && b.flow.direction !== "none" ? `${b.flow.mappings.length} entity pairs` : "no path"}</span>
-                    <span>{timeAgo(b.updatedAt, now)}</span>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </Reveal>
-      )}
-
-      {/* Recent runs */}
-      <Reveal as="section" className="py-10">
-        <SectionLabel n="//">Recent endpoints</SectionLabel>
-        {recent.length === 0 ? (
-          <div className="card p-10 text-center wires" style={{ color: "var(--color-muted)" }}>
-            <p className="font-mono text-sm">
-              No connections yet. Name an app above to dispatch the swarm.
-            </p>
-          </div>
-        ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {recent.map((it) => (
-              <Link key={it.id} href={`/run/${it.id}`} className="group">
-                <div className="card p-5 h-full transition-transform group-hover:-translate-y-1">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <BrandLogo name={it.appName} size={38} />
-                      <div className="min-w-0">
-                        <div className="font-display font-bold text-lg leading-tight truncate">{it.appName}</div>
-                        <div className="font-mono text-xs mt-0.5" style={{ color: "var(--color-muted)" }}>
-                          {it.discovery?.category ?? "queued"}
-                        </div>
-                      </div>
-                    </div>
-                    <StatusChip status={it.status} />
-                  </div>
-                  <div
-                    className="mt-4 flex items-center justify-between font-mono text-xs"
-                    style={{ color: "var(--color-muted)" }}
-                  >
-                    <span>{it.plan?.pathLabel ?? "not scouted"}</span>
-                    <span>{timeAgo(it.updatedAt, now)}</span>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
       </Reveal>
 
       {/* Final CTA */}
@@ -365,97 +278,5 @@ function Connector() {
     <svg width="20" height="16" viewBox="0 0 20 16" fill="none" aria-hidden>
       <path d="M1 8h15M12 4l5 4-5 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
-  );
-}
-
-// Landing teaser that hits with the breadth: nodes + worms + go-fish, one link away.
-function GalleryTeaser() {
-  const picks = WORMS.slice(0, 4);
-  return (
-    <section className="py-14">
-      <div className="card overflow-hidden" style={{ background: "var(--color-paper-2)" }}>
-        <div className="p-6 sm:p-8 grid lg:grid-cols-[1fr_1.1fr] gap-8 items-center">
-          <div>
-            <div className="kicker mb-3">The tackle box</div>
-            <h2 className="font-display font-extrabold text-[clamp(1.7rem,3.6vw,2.5rem)] leading-tight">
-              Cast a worm.{" "}
-              <span className="marker" style={{ color: "var(--color-signal)" }}>Catch any node.</span>
-            </h2>
-            <p className="mt-3 text-base max-w-md" style={{ color: "var(--color-ink-soft)" }}>
-              Every app is a node. Every automation is a worm that hooks two nodes together. Start from a ready-made
-              worm, build your own, or go fish for any app that isn&apos;t in the pond yet.
-            </p>
-            <Link href="/gallery" className="btn btn-signal text-sm mt-5 inline-flex">
-              Open the gallery ↗
-            </Link>
-          </div>
-          <div className="grid sm:grid-cols-2 gap-2.5">
-            {picks.map((w) => (
-              <Link
-                key={w.prompt}
-                href="/gallery"
-                className="card p-3 flex items-center gap-2 transition-transform hover:-translate-y-1"
-                style={{ background: "var(--color-paper)" }}
-              >
-                <BrandLogo name={w.from} size={30} />
-                <span className="text-[0.7rem]" style={{ color: "var(--color-signal)" }}>→</span>
-                <BrandLogo name={w.to} size={30} />
-                <span className="text-[0.75rem] leading-tight ml-1 font-medium" style={{ color: "var(--color-ink-soft)" }}>
-                  {w.from} to {w.to}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function DecisionTree() {
-  const node = (label: string, sub: string, color: string) => (
-    <div
-      className="card px-4 py-3 flex-1"
-      style={{ borderColor: "color-mix(in srgb, " + color + " 35%, var(--color-line))" }}
-    >
-      <div className="text-sm font-semibold leading-tight">{label}</div>
-      <div className="font-mono text-[0.66rem] mt-0.5" style={{ color }}>
-        {sub}
-      </div>
-    </div>
-  );
-  const branch = (label: string) => (
-    <span
-      className="font-mono text-[0.62rem] px-2 py-1 rounded-full whitespace-nowrap"
-      style={{ color: "var(--color-muted)", border: "1px solid var(--color-line-2)" }}
-    >
-      {label}
-    </span>
-  );
-
-  return (
-    <div className="card p-6 wires" style={{ boxShadow: "var(--shadow-soft)" }}>
-      <div className="kicker mb-4">decision tree</div>
-      <div className="flex flex-col gap-2.5">
-        {node("App name or URL", "scout maps the surface", "var(--color-ink)")}
-        <span className="ml-4 h-3 w-px" style={{ background: "var(--color-line-2)" }} />
-        <div className="flex items-center gap-2 tree-row p-0.5" style={{ animationDelay: "0s" }}>
-          {branch("hosted MCP")}
-          {node("Wire MCP + authorize", "fastest path", "var(--color-teal)")}
-        </div>
-        <div className="flex items-center gap-2 tree-row p-0.5" style={{ animationDelay: "1.5s" }}>
-          {branch("has API")}
-          {node("Custom MCP + OAuth", "build + deploy", "var(--color-signal)")}
-        </div>
-        <div className="flex items-center gap-2 tree-row p-0.5" style={{ animationDelay: "3s" }}>
-          {branch("no API")}
-          {node("Browser + OAuth/SSO", "headless fallback", "var(--color-ink)")}
-        </div>
-        <div className="flex items-center gap-2 tree-row p-0.5" style={{ animationDelay: "4.5s" }}>
-          {branch("dead end")}
-          {node("No path found", "flagged honestly", "var(--color-blocked)")}
-        </div>
-      </div>
-    </div>
   );
 }
