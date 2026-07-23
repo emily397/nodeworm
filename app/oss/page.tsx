@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { GlowStats, PageHero } from "@/app/components/PageHero";
 import { adaptedProvenance, pieceCount } from "@/lib/pieces/registry";
 
 export const dynamic = "force-dynamic";
@@ -19,14 +20,24 @@ export default function OssPage() {
   const total = pieceCount();
   return (
     <div className="mx-auto max-w-3xl px-5 py-14">
-      <div className="kicker mb-2">attribution</div>
-      <h1 className="display-xl text-[clamp(2rem,4.5vw,3rem)]">
-        Open source<span className="gradient-text">.</span>
-      </h1>
-      <p className="mt-3 text-sm max-w-xl" style={{ color: "var(--color-ink-soft)" }}>
-        NodeWorm builds on open-source work. The projects below are used under their own licences, with copyright
-        notices preserved on every adapted file.
-      </p>
+      <PageHero
+        kicker="attribution"
+        kickerColor="var(--color-grape)"
+        title="Standing on"
+        accent="good work."
+        sub="NodeWorm builds on open source. Everything below is used under its own licence, with the original copyright preserved on every adapted file."
+      />
+
+      <div className="card p-7 mb-9" style={{ background: "linear-gradient(120deg, color-mix(in srgb, var(--color-grape) 12%, var(--color-paper-2)), var(--color-paper-2))" }}>
+        <GlowStats
+          stats={[
+            { value: total, label: "built-in connectors", color: "var(--color-teal)", rgb: "56,198,232" },
+            { value: pieces.length, label: "adapted from open source", color: "var(--color-grape)", rgb: "179,156,255" },
+            { value: total - pieces.length, label: "written from vendor docs", color: "var(--color-live)", rgb: "167,217,75" },
+            { value: "0", label: "licences unaccounted for", color: "var(--color-amber)", rgb: "255,210,63" },
+          ]}
+        />
+      </div>
 
       <div className="mt-8 space-y-3">
         {COMPONENTS.map((c) => (

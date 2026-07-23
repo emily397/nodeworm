@@ -195,7 +195,7 @@ const PhaseLane = memo(
         {(isActive || done) && telemetry && (
           <div
             className="relative card overflow-hidden mb-3"
-            style={{ background: "#1b1812", borderColor: "#2c2820" }}
+            style={{ background: "#10121c", borderColor: "#1a1d2b" }}
           >
             {isActive && <div className="scanline" />}
             <div className="telemetry p-4">
@@ -203,7 +203,7 @@ const PhaseLane = memo(
                 <TelemetryRow key={j} line={t} delayMs={j * 90} />
               ))}
               {isActive && (
-                <div className="cursor-blink" style={{ color: "#9fd80a" }} />
+                <div className="cursor-blink" style={{ color: "#a7d94b" }} />
               )}
             </div>
           </div>
@@ -222,11 +222,11 @@ const PhaseLane = memo(
 
 function TelemetryRow({ line, delayMs }: { line: TelemetryLine; delayMs: number }) {
   const colorMap: Record<string, string> = {
-    scan: "#7d756a",
-    info: "#b8b0a2",
-    ok: "#8fd14f",
-    warn: "#ff7a47",
-    action: "#f4eee1",
+    scan: "#8a8fa6",
+    info: "#c2c6d8",
+    ok: "#a7d94b",
+    warn: "#ffa03d",
+    action: "#f3f5fe",
   };
   const prefix: Record<string, string> = { scan: "::", info: "  ", ok: "ok", warn: "!!", action: ">>" };
   return (
@@ -289,25 +289,25 @@ function ReconResult({ p }: { p: ProbeEvidence }) {
   const finds: { label: string; value: string; accent: string }[] = [];
   if (p.oauthAuthorizeUrl) finds.push({ label: "oauth", value: probeHost(p.oauthAuthorizeUrl), accent: "var(--color-live)" });
   if (p.oauthScopes?.length) finds.push({ label: "scopes", value: String(p.oauthScopes.length), accent: "var(--color-live)" });
-  if (p.hasHostedMcp) finds.push({ label: "mcp", value: p.mcpTransport ?? "http", accent: "#5bd6c0" });
-  if (p.aiEndpoints.length) finds.push({ label: "ai", value: `${p.aiEndpoints.length}${p.aiOpenAiCompatible ? " · openai" : ""}`, accent: "#8fd14f" });
-  if (p.openApiUrl) finds.push({ label: "openapi", value: `${p.pathCount ?? 0} paths`, accent: "#b8b0a2" });
-  if (p.hasWebhooks) finds.push({ label: "webhooks", value: "yes", accent: "#5bd6c0" });
+  if (p.hasHostedMcp) finds.push({ label: "mcp", value: p.mcpTransport ?? "http", accent: "#38c6e8" });
+  if (p.aiEndpoints.length) finds.push({ label: "ai", value: `${p.aiEndpoints.length}${p.aiOpenAiCompatible ? " · openai" : ""}`, accent: "#a7d94b" });
+  if (p.openApiUrl) finds.push({ label: "openapi", value: `${p.pathCount ?? 0} paths`, accent: "#c2c6d8" });
+  if (p.hasWebhooks) finds.push({ label: "webhooks", value: "yes", accent: "#38c6e8" });
 
   const trail = p.hits.filter((h) => h.detail).slice(0, 6);
   if (!finds.length && !trail.length) return null;
 
   const statusColor = (s: number) =>
-    s === 0 ? "#7d756a" : s < 300 ? "#8fd14f" : s < 400 ? "#b8b0a2" : s < 500 ? "#ff7a47" : "#ff5a4f";
+    s === 0 ? "#8a8fa6" : s < 300 ? "#a7d94b" : s < 400 ? "#c2c6d8" : s < 500 ? "#ffa03d" : "#ff6b6b";
 
   return (
-    <div className="mt-3 rounded-lg overflow-hidden" style={{ background: "#1b1812", border: "1px solid #2c2820" }}>
+    <div className="mt-3 rounded-lg overflow-hidden" style={{ background: "#10121c", border: "1px solid #1a1d2b" }}>
       <div className="flex items-center gap-2 px-4 pt-3 pb-2">
         <span className="dot" style={{ background: "var(--color-live)", width: 7, height: 7 }} />
-        <span className="font-mono text-[0.6rem] uppercase tracking-wider" style={{ color: "#9fd80a" }}>
+        <span className="font-mono text-[0.6rem] uppercase tracking-wider" style={{ color: "#a7d94b" }}>
           reverse-engineered surface
         </span>
-        <span className="font-mono text-[0.6rem]" style={{ color: "#7d756a" }}>
+        <span className="font-mono text-[0.6rem]" style={{ color: "#8a8fa6" }}>
           {p.origins.length} origin{p.origins.length === 1 ? "" : "s"} probed
         </span>
       </div>
@@ -318,21 +318,21 @@ function ReconResult({ p }: { p: ProbeEvidence }) {
             <span
               key={f.label}
               className="font-mono text-[0.64rem] px-2 py-0.5 rounded inline-flex items-center gap-1.5"
-              style={{ background: "#241f17", border: "1px solid #34302600" }}
+              style={{ background: "#171a26", border: "1px solid #34302600" }}
             >
               <span style={{ color: f.accent }}>{f.label}</span>
-              <span style={{ color: "#d8cfbe" }}>{f.value}</span>
+              <span style={{ color: "#dfe3f0" }}>{f.value}</span>
             </span>
           ))}
         </div>
       )}
 
       {trail.length > 0 && (
-        <div className="telemetry px-4 pb-3 pt-1" style={{ borderTop: "1px solid #241f17" }}>
+        <div className="telemetry px-4 pb-3 pt-1" style={{ borderTop: "1px solid #171a26" }}>
           {trail.map((h, i) => (
-            <div key={i} className="flex gap-2 items-baseline" style={{ color: "#b8b0a2" }}>
-              <span style={{ color: "#7d756a", minWidth: "5.5rem" }}>{h.kind}</span>
-              <span className="truncate" style={{ color: "#9a9082" }}>
+            <div key={i} className="flex gap-2 items-baseline" style={{ color: "#c2c6d8" }}>
+              <span style={{ color: "#8a8fa6", minWidth: "5.5rem" }}>{h.kind}</span>
+              <span className="truncate" style={{ color: "#9397ab" }}>
                 {probeHost(h.url)}
               </span>
               <span style={{ color: statusColor(h.status) }}>{h.status === 0 ? "err" : h.status}</span>
@@ -504,7 +504,7 @@ function CopyLine({ label, value }: { label: string; value: string }) {
       <div className="flex items-stretch gap-2">
         <pre
           className="flex-1 font-mono text-[0.7rem] leading-relaxed overflow-x-auto rounded-md p-2.5 m-0"
-          style={{ background: "#1b1812", color: "#d8cfbe", border: "1px solid #2c2820" }}
+          style={{ background: "#10121c", color: "#dfe3f0", border: "1px solid #1a1d2b" }}
         >
           {value}
         </pre>
@@ -1580,7 +1580,7 @@ function autobuildVisual(status: AutobuildStep["status"] | "pending"): { color: 
 // shows the true point reached, never an optimistic guess.
 function AutobuildProgress({ state }: { state: AutobuildState | null }) {
   return (
-    <div className="rounded-md p-3 space-y-2.5" style={{ background: "#1b1812", border: "1px solid #2c2820" }}>
+    <div className="rounded-md p-3 space-y-2.5" style={{ background: "#10121c", border: "1px solid #1a1d2b" }}>
       {AUTOBUILD_ORDER.map((key, i) => {
         const step = state?.steps.find((s) => s.key === key);
         const status: AutobuildStep["status"] | "pending" = step?.status ?? "pending";
@@ -1594,7 +1594,7 @@ function AutobuildProgress({ state }: { state: AutobuildState | null }) {
               <div className="flex items-baseline gap-2">
                 <span
                   className="font-mono text-[0.58rem] uppercase tracking-wider"
-                  style={{ color: status === "pending" ? "#7d756a" : "#d8cfbe" }}
+                  style={{ color: status === "pending" ? "#8a8fa6" : "#dfe3f0" }}
                 >
                   {i + 1}. {AUTOBUILD_LABELS[key]}
                 </span>
@@ -1605,11 +1605,11 @@ function AutobuildProgress({ state }: { state: AutobuildState | null }) {
                 )}
               </div>
               {step?.detail ? (
-                <p className="text-[0.68rem] mt-0.5 leading-snug" style={{ color: status === "failed" ? "var(--color-berry)" : "#b8b0a2" }}>
+                <p className="text-[0.68rem] mt-0.5 leading-snug" style={{ color: status === "failed" ? "var(--color-berry)" : "#c2c6d8" }}>
                   {step.detail}
                 </p>
               ) : status === "running" ? (
-                <p className="text-[0.68rem] mt-0.5" style={{ color: "#8b8071" }}>
+                <p className="text-[0.68rem] mt-0.5" style={{ color: "#9397ab" }}>
                   working…
                 </p>
               ) : null}
@@ -1759,13 +1759,13 @@ function GeneratedConnectorCard({ integration }: { integration: Integration }) {
               {meta.openApiOps ? <MethodChip label={`${meta.openApiOps} real ops`} color="var(--color-live)" /> : null}
             </div>
           )}
-          <div className="rounded-md overflow-hidden" style={{ background: "#1b1812", border: "1px solid #2c2820" }}>
+          <div className="rounded-md overflow-hidden" style={{ background: "#10121c", border: "1px solid #1a1d2b" }}>
             <div className="telemetry px-3 py-2.5">
               {files.map((f) => (
-                <div key={f.path} className="flex gap-2 items-baseline" style={{ color: "#b8b0a2" }}>
-                  <span style={{ color: "#7d756a" }}>+</span>
-                  <span style={{ color: "#d8cfbe" }}>{f.path}</span>
-                  <span style={{ color: "#7d756a" }}>{f.content.split("\n").length}L</span>
+                <div key={f.path} className="flex gap-2 items-baseline" style={{ color: "#c2c6d8" }}>
+                  <span style={{ color: "#8a8fa6" }}>+</span>
+                  <span style={{ color: "#dfe3f0" }}>{f.path}</span>
+                  <span style={{ color: "#8a8fa6" }}>{f.content.split("\n").length}L</span>
                 </div>
               ))}
             </div>
@@ -1860,13 +1860,13 @@ function agentWaitingHtml(appName: string): string {
   return `<!doctype html><meta charset="utf-8"><title>Connecting ${app}</title>
 <style>
   html,body{height:100%;margin:0}
-  body{background:#14100c;color:#f4eee1;font:16px/1.5 ui-sans-serif,system-ui,sans-serif;display:grid;place-items:center;text-align:center}
+  body{background:#0d0f18;color:#f3f5fe;font:16px/1.5 ui-sans-serif,system-ui,sans-serif;display:grid;place-items:center;text-align:center}
   .wrap{max-width:340px;padding:32px}
-  .dot{width:12px;height:12px;border-radius:50%;background:#9fd80a;margin:0 auto 20px;animation:p 1.1s ease-in-out infinite}
+  .dot{width:12px;height:12px;border-radius:50%;background:#a7d94b;margin:0 auto 20px;animation:p 1.1s ease-in-out infinite}
   @keyframes p{0%,100%{opacity:.35;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
   h1{font-size:19px;margin:0 0 10px;font-weight:700}
-  p{margin:0;color:#b8b0a2;font-size:14px}
-  .app{color:#f4eee1}
+  p{margin:0;color:#c2c6d8;font-size:14px}
+  .app{color:#f3f5fe}
 </style>
 <div class="wrap">
   <div class="dot"></div>
