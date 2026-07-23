@@ -29,7 +29,7 @@ export function ReelItIn({ appName, appUrl, onDone }: { appName: string; appUrl?
   const Logo = (
     <span
       className="grid place-items-center rounded-lg overflow-hidden shrink-0"
-      style={{ width: 38, height: 38, background: "#fff", border: "1px solid var(--color-line-2)", boxShadow: "var(--shadow-soft)" }}
+      style={{ width: 38, height: 38, background: "var(--color-card)", border: "1px solid var(--color-line-2)", boxShadow: "var(--shadow-soft)" }}
     >
       {hookImg ? (
         // eslint-disable-next-line @next/next/no-img-element

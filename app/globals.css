@@ -1,36 +1,37 @@
 @import "tailwindcss";
 
 /* NodeWorm - mission control for a connection swarm.
-   Warm parchment base, electric tangerine signal, deep teal support,
-   acid-lime "live wire" reserved for active agents. */
+   Night ground (nocturne indigo) with the vibrant pink/orange/yellow/cyan
+   accent set from the animated-node-motifs design. The whole app reads from
+   these tokens, so the landing page's look carries to every surface. */
 
 @theme inline {
-  --color-paper: #f4eee1;
-  --color-paper-2: #fbf8f0;
-  --color-card: #fffdf8;
-  --color-ink: #16130d;
-  --color-ink-soft: #463f33;
-  --color-muted: #8b8071;
-  --color-line: #e2d8c4;
-  --color-line-2: #d3c6ad;
-  --color-signal: #ff4d14;
-  --color-signal-2: #d83a06;
-  --color-teal: #0c5c52;
-  --color-teal-2: #0a4a42;
-  --color-live: #9fd80a;
-  --color-blocked: #c0392b;
+  --color-paper: #161826;
+  --color-paper-2: #1d2032;
+  --color-card: #232532;
+  --color-ink: #f3f5fe;
+  --color-ink-soft: #cfd3e5;
+  --color-muted: #9397ab;
+  --color-line: #32354a;
+  --color-line-2: #454962;
+  --color-signal: #ff5ea0;
+  --color-signal-2: #ff7fb4;
+  --color-teal: #38c6e8;
+  --color-teal-2: #2aa8c7;
+  --color-live: #a7d94b;
+  --color-blocked: #ff6b6b;
 
-  /* Vibrant warm-spectrum accents: the palette that makes it feel alive, not a
-     two-tone terminal. Amber -> tangerine -> berry warm arc, aqua + lime cool pops. */
-  --color-amber: #ffb020;
-  --color-berry: #ff2d78;
-  --color-aqua: #10b6a0;
-  --color-grape: #7b3ff2;
+  /* The design's accent set: pink -> orange -> yellow warm arc, cyan + lime
+     cool pops, blurple for the agent tier. */
+  --color-amber: #ffd23f;
+  --color-berry: #ffa03d;
+  --color-aqua: #38c6e8;
+  --color-grape: #b39cff;
 
   /* Signature gradients (used for hero text, primary CTAs, glows, aurora). */
-  --grad-warm: linear-gradient(105deg, var(--color-amber) 0%, var(--color-signal) 42%, var(--color-berry) 100%);
+  --grad-warm: linear-gradient(100deg, var(--color-signal) 0%, var(--color-berry) 55%, var(--color-amber) 100%);
   --grad-cool: linear-gradient(120deg, var(--color-aqua) 0%, var(--color-live) 100%);
-  --grad-cta: linear-gradient(120deg, var(--color-signal) 0%, var(--color-berry) 100%);
+  --grad-cta: linear-gradient(100deg, var(--color-signal) 0%, var(--color-berry) 100%);
 
   --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
   --font-body: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
@@ -38,8 +39,8 @@
 }
 
 :root {
-  --shadow-soft: 0 1px 0 rgba(22, 19, 13, 0.03), 0 10px 34px -16px rgba(22, 19, 13, 0.28);
-  --shadow-lift: 0 2px 0 rgba(22, 19, 13, 0.04), 0 26px 60px -24px rgba(22, 19, 13, 0.4);
+  --shadow-soft: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 10px 30px -16px rgba(0, 0, 0, 0.7);
+  --shadow-lift: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 26px 60px -24px rgba(0, 0, 0, 0.85);
 }
 
 * {
@@ -69,11 +70,11 @@ body::before {
   inset: -20%;
   z-index: -2;
   background:
-    radial-gradient(46% 42% at 14% 8%, color-mix(in srgb, var(--color-amber) 42%, transparent), transparent 70%),
-    radial-gradient(44% 40% at 88% 4%, color-mix(in srgb, var(--color-berry) 34%, transparent), transparent 70%),
-    radial-gradient(50% 46% at 78% 70%, color-mix(in srgb, var(--color-aqua) 30%, transparent), transparent 72%),
-    radial-gradient(40% 40% at 22% 88%, color-mix(in srgb, var(--color-signal) 30%, transparent), transparent 72%),
-    linear-gradient(180deg, var(--color-paper) 0%, #f0e8d6 100%);
+    radial-gradient(46% 42% at 14% 8%, color-mix(in srgb, var(--color-signal) 30%, transparent), transparent 70%),
+    radial-gradient(44% 40% at 88% 4%, color-mix(in srgb, var(--color-berry) 26%, transparent), transparent 70%),
+    radial-gradient(50% 46% at 78% 70%, color-mix(in srgb, var(--color-aqua) 24%, transparent), transparent 72%),
+    radial-gradient(40% 40% at 22% 88%, color-mix(in srgb, var(--color-grape) 26%, transparent), transparent 72%),
+    linear-gradient(180deg, var(--color-paper) 0%, #10111c 100%);
   background-repeat: no-repeat;
   filter: saturate(1.15);
   animation: aurora 26s ease-in-out infinite alternate;
@@ -97,10 +98,10 @@ body::after {
   position: fixed;
   inset: 0;
   z-index: -1;
-  opacity: 0.4;
+  opacity: 0.16;
   pointer-events: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
-  mix-blend-mode: multiply;
+  mix-blend-mode: overlay;
 }
 
 ::selection {
@@ -153,7 +154,7 @@ a {
   background-image: repeating-linear-gradient(
     -52deg,
     transparent 0 22px,
-    rgba(22, 19, 13, 0.045) 22px 23px
+    rgba(255, 255, 255, 0.045) 22px 23px
   );
 }
 
@@ -189,8 +190,9 @@ a {
   transform: translateY(-1px);
 }
 .btn-ink {
-  background: var(--color-ink);
-  color: var(--color-paper);
+  background: var(--color-card);
+  color: var(--color-ink);
+  border-color: var(--color-line-2);
 }
 .btn-ink:hover {
   transform: translateY(-2px);
@@ -488,7 +490,9 @@ a {
   --nw-cyan: #38c6e8;
   --nw-lime: #a7d94b;
   --nw-purple: #b39cff;
-  background: var(--nw-bg);
+  /* Transparent so the shared night aurora on <body> runs under the landing
+     page too; the hero paints its own glow on top. */
+  background: transparent;
   color: var(--nw-text);
   font-size: 15px;
   line-height: 1.55;
@@ -938,7 +942,7 @@ a {
 
 /* ---- Vibrant elevation ---- */
 .btn-signal {
-  background: linear-gradient(135deg, #ff6a2b 0%, #ff4d14 45%, #d83a06 100%);
+  background: var(--grad-cta);
 }
 .marker {
   position: relative;
@@ -952,7 +956,7 @@ a {
   bottom: 0.06em;
   height: 0.32em;
   z-index: -1;
-  background: linear-gradient(90deg, rgba(255, 106, 43, 0.32), rgba(255, 77, 20, 0.42));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--color-signal) 34%, transparent), color-mix(in srgb, var(--color-berry) 42%, transparent));
   border-radius: 0.2em;
   transform-origin: left;
   animation: marker-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.35s both;

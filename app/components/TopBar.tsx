@@ -17,9 +17,6 @@ export function TopBar() {
       .catch(() => setMode("heuristic"));
   }, []);
 
-  // The landing page ships its own dark nav (home-vibrant design); the parchment
-  // bar would clash sitting above it.
-  if (pathname === "/") return null;
 
   const nav = [
     { href: "/", label: "Launch" },
@@ -60,6 +57,9 @@ export function TopBar() {
             <div className="ml-2 flex items-center gap-2">
               <ModePill mode={mode} />
               <AccountMenu />
+              <Link href="/flows" className="btn btn-signal text-sm hidden sm:inline-flex" style={{ padding: "0.55rem 0.95rem" }}>
+                Get started
+              </Link>
             </div>
           </nav>
         </div>

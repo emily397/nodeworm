@@ -60,23 +60,6 @@ export default function Home() {
 
   return (
     <div className="nw-night" style={{ minHeight: "100vh" }}>
-      {/* Nav */}
-      <header style={{ display: "flex", alignItems: "center", gap: 17, padding: "11.2px 90px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 17 }}>
-          <Link href="/" className="nw-brand" style={{ textDecoration: "none" }}>
-            nodeworm.
-          </Link>
-          <Link href="/gallery" className="nw-navlink">Gallery</Link>
-          <Link href="/integrations" className="nw-navlink">Integrations</Link>
-          <Link href="/flows" className="nw-navlink">Flows</Link>
-          <Link href="/workspaces" className="nw-navlink">Team</Link>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8.4, marginLeft: "auto" }}>
-          <Link href="/flows" className="nw-btn nw-btn-ghost">Sign in</Link>
-          <Link href="/flows" className="nw-btn nw-btn-primary">Get started</Link>
-        </div>
-      </header>
-
       <NightHero />
 
       <div className="nw-hr" style={{ marginInline: 90 }} />
