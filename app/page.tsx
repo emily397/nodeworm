@@ -1,282 +1,246 @@
 import Link from "next/link";
-import { WORMS } from "@/lib/catalog";
-import { Reveal } from "./components/Reveal";
-import { BrandLogo } from "./components/BrandLogo";
-import { Constellation, HomeHero } from "./components/HomeHero";
-import { FlowShowcase } from "./components/FlowShowcase";
-import { LogoCloud } from "./components/LogoCloud";
+import { NODES } from "@/lib/catalog";
+import { NightHero, Arrow } from "./components/NightHero";
+import { Check, Compass, Globe, Lightning, Plane, Plugs, Refresh, Search, Shield } from "./components/NightIcons";
 
 export const dynamic = "force-dynamic";
 
-// The five agents, in plain English. The engine's own names stay as flavor; the
-// descriptions carry no jargon.
-const AGENTS = [
-  { n: "01", agent: "Scout", label: "Finds the way in", desc: "Works out how an app can connect, even when it comes with no instructions.", color: "var(--color-aqua)" },
-  { n: "02", agent: "Architect", label: "Handles sign-in", desc: "Picks the safest route. You click sign in once; your keys stay sealed away.", color: "var(--color-signal)" },
-  { n: "03", agent: "Wire", label: "Connects the dots", desc: "Hooks up both directions: things that happen, and things to do about them.", color: "var(--color-berry)" },
-  { n: "04", agent: "Auditor", label: "Proves it works", desc: "Tests everything for real. Nothing gets called connected until it is.", color: "var(--color-amber)" },
-  { n: "05", agent: "Relay", label: "Hands it over", desc: "Shows you what works and the one thing left to click, if there is one.", color: "var(--color-teal)" },
+// Landing page, implementing the home-vibrant design from the Claude Design
+// handoff bundle (nocturne token set, animated node motifs). Dark, saturated,
+// and motion-led; the rest of the app keeps its parchment system. All styling
+// lives under .nw-night in globals.css.
+
+const PAD = "45px 90px";
+const APP_TAGS = ["Stripe", "Notion", "Slack", "GitHub", "Shopify", "Gmail", "HubSpot", "Airtable", "Google Calendar", "Discord", "Linear", "Figma", "Salesforce", "Typeform", "Calendly", "Zoom"];
+
+const STEPS = [
+  { n: "01", c: "#38c6e8", t: "Say it", d: "Type what should happen, the way you'd tell a coworker. No flowchart homework." },
+  { n: "02", c: "#ff5ea0", t: "Watch it assemble", d: "NodeWorm picks the apps, signs you in with one click each, and wires every step." },
+  { n: "03", c: "#ffa03d", t: "Forget about it", d: "It runs on autopilot, retries failures, and only interrupts you when it truly needs you." },
 ];
 
-function H2({ eyebrow, children }: { eyebrow: string; children: React.ReactNode }) {
+const STATS = [
+  { v: "19", c: "#38c6e8", rgb: "56,198,232", l: "ready-made connectors" },
+  { v: "Any", c: "#ff5ea0", rgb: "255,94,160", l: "app, found live, no waiting on a catalog" },
+  { v: "8", c: "#ffa03d", rgb: "255,160,61", l: "kinds of steps, including AI and branching" },
+  { v: "24/7", c: "#ffd23f", rgb: "255,210,63", l: "self-healing, unattended runs" },
+];
+
+const WORM_CARDS = [
+  { k: "Stripe → Slack", c: "#38c6e8", t: "New payment", d: "When a payment lands, post it to the team channel." },
+  { k: "Calendly → Google Calendar", c: "#ff5ea0", t: "Meeting booked", d: "When a meeting's booked, add the event." },
+  { k: "GitHub → Linear", c: "#ffa03d", t: "Issue opened", d: "When an issue opens, create a linked ticket." },
+  { k: "Shopify → Google Sheets", c: "#a7d94b", t: "New order", d: "When an order comes in, add a row." },
+];
+
+const COMPARE = [
+  { left: "You build the automation, box by box.", right: "You describe it. NodeWorm builds it." },
+  { left: "Stuck if your app isn't in the catalog.", right: "Scouts any app's real integration surface, live." },
+  { left: "Fails quietly. You find out later.", right: "Retries, heals, and flags the one thing it needs from you." },
+];
+
+const AGENTS = [
+  { i: Search, c: "#38c6e8", t: "01 · Scout", d: "Finds the way in. Searches docs, registries and developer portals." },
+  { i: Compass, c: "#ff5ea0", t: "02 · Architect", d: "Chooses the safest path, hosted, custom, or guided sign-in. Never a bare API key." },
+  { i: Plugs, c: "#ffa03d", t: "03 · Wire", d: "Builds the connection, live events, polling, or mirrored records." },
+  { i: Shield, c: "#a7d94b", t: "04 · Auditor", d: "Proves it works, tests the login, a real write, and event delivery." },
+  { i: Plane, c: "#b39cff", t: "05 · Relay", d: "Hands it back, what's live, and the one thing left for you." },
+];
+
+function Kicker({ color, children }: { color: string; children: React.ReactNode }) {
   return (
-    <div className="mb-7">
-      <div className="text-xs uppercase tracking-[0.2em] mb-2" style={{ color: "var(--color-signal)" }}>
-        {eyebrow}
-      </div>
-      <h2 className="font-display font-extrabold text-[clamp(1.7rem,3.6vw,2.5rem)] leading-tight">{children}</h2>
-    </div>
+    <h6 className="nw-h6" style={{ color, margin: "0 0 5.6px" }}>
+      {children}
+    </h6>
   );
 }
 
 export default function Home() {
+  const appCount = NODES.length;
+
   return (
-    <div className="mx-auto max-w-6xl px-5">
-      {/* Hero: the composer IS the product. Type it, watch it build itself. */}
-      <section className="pt-14 pb-12 grid lg:grid-cols-[1.1fr_0.9fr] gap-10 items-center">
-        <div>
-          <div className="kicker rise mb-5" style={{ animationDelay: "0ms" }}>
-            Automation that builds itself
-          </div>
-          <h1 className="display-xl rise text-[clamp(3rem,6.8vw,5.2rem)]" style={{ animationDelay: "40ms" }}>
-            Your apps.
-            <br />
-            <span className="gradient-text">On autopilot.</span>
-          </h1>
-          <p className="rise mt-5 text-lg max-w-xl" style={{ animationDelay: "90ms", color: "var(--color-ink-soft)" }}>
-            Say what you want in plain English. NodeWorm connects the apps, wires the steps and keeps it
-            running, even the apps other tools can&apos;t reach.
-          </p>
+    <div className="nw-night" style={{ minHeight: "100vh" }}>
+      {/* Nav */}
+      <header style={{ display: "flex", alignItems: "center", gap: 17, padding: "11.2px 90px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 17 }}>
+          <Link href="/" className="nw-brand" style={{ textDecoration: "none" }}>
+            nodeworm.
+          </Link>
+          <Link href="/gallery" className="nw-navlink">Gallery</Link>
+          <Link href="/integrations" className="nw-navlink">Integrations</Link>
+          <Link href="/flows" className="nw-navlink">Flows</Link>
+          <Link href="/workspaces" className="nw-navlink">Team</Link>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8.4, marginLeft: "auto" }}>
+          <Link href="/flows" className="nw-btn nw-btn-ghost">Sign in</Link>
+          <Link href="/flows" className="nw-btn nw-btn-primary">Get started</Link>
+        </div>
+      </header>
 
-          <div className="rise mt-7" style={{ animationDelay: "140ms" }}>
-            <HomeHero />
-          </div>
+      <NightHero />
 
-          <div className="rise mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs" style={{ animationDelay: "260ms", color: "var(--color-muted)" }}>
-            <span className="flex items-center gap-1.5">
-              <span className="dot" style={{ background: "var(--color-live)" }} />
-              No code, ever
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="dot" style={{ background: "var(--color-aqua)" }} />
-              Connects apps others can&apos;t
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="dot" style={{ background: "var(--color-amber)" }} />
-              Runs survive anything
-            </span>
+      <div className="nw-hr" style={{ marginInline: 90 }} />
+
+      {/* Three pillars + app tags */}
+      <section style={{ padding: PAD }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 17 }}>
+          <div className="nw-card nw-elev">
+            <Lightning color="#ffd23f" />
+            <div className="nw-card-title">No code, ever</div>
+            <p className="nw-card-body">If you can say it, NodeWorm can build it.</p>
+          </div>
+          <div className="nw-card nw-elev">
+            <Globe color="#38c6e8" />
+            <div className="nw-card-title">Connects apps others can&apos;t</div>
+            <p className="nw-card-body">Works with the tools you already use, and any app it&apos;s never seen before.</p>
+          </div>
+          <div className="nw-card nw-elev">
+            <Refresh color="#ff5ea0" />
+            <div className="nw-card-title">Runs survive anything</div>
+            <p className="nw-card-body">Retries failures, heals itself, and tells you if it ever needs a hand.</p>
           </div>
         </div>
-
-        <div className="rise hidden lg:block" style={{ animationDelay: "180ms" }}>
-          <Constellation />
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 27 }}>
+          {APP_TAGS.map((a) => (
+            <span key={a} className="nw-tag">{a}</span>
+          ))}
+          <Link href="/gallery" className="nw-tag nw-tag-outline">
+            +{appCount} more apps ↗
+          </Link>
         </div>
       </section>
 
-      {/* Real logos: the apps NodeWorm connects. */}
-      <Reveal as="section" className="pt-2 pb-12">
-        <p className="text-center text-xs uppercase tracking-[0.2em] mb-5" style={{ color: "var(--color-muted)" }}>
-          Works with the apps you already use, and any it has never seen
-        </p>
-        <LogoCloud />
-      </Reveal>
-
-      {/* Watch one run: the product's output, not its internals. */}
-      <Reveal as="section" className="py-12">
-        <div className="grid lg:grid-cols-[0.9fr_1.1fr] gap-10 items-center">
-          <div>
-            <H2 eyebrow="See it work">
-              This ran while you
-              <br />
-              read this sentence<span className="gradient-text">.</span>
-            </H2>
-            <p className="text-base max-w-md" style={{ color: "var(--color-ink-soft)" }}>
-              One sentence built this whole thing: the trigger, the rule, the AI touch, the message. It has
-              been running itself ever since.
-            </p>
-            <ul className="mt-5 space-y-2.5 text-sm" style={{ color: "var(--color-ink-soft)" }}>
-              {["Every step shows exactly what happened, in plain words", "Failures retry themselves, then tell you honestly", "Change anything by clicking it, not by reading docs"].map((t) => (
-                <li key={t} className="flex items-start gap-2.5">
-                  <span className="dot mt-1.5 shrink-0" style={{ background: "var(--color-live)" }} />
-                  {t}
-                </li>
-              ))}
-            </ul>
-            <Link href="/flows" className="btn btn-signal btn-shimmer text-sm mt-7 inline-flex">
-              Build yours in 30 seconds →
-            </Link>
-          </div>
-          <FlowShowcase />
-        </div>
-      </Reveal>
-
-      {/* How it works: three moves, zero jargon. */}
-      <Reveal as="section" className="py-12">
-        <H2 eyebrow="How it works">Three moves, and the busywork is gone</H2>
-        <div className="grid md:grid-cols-3 gap-4">
-          {[
-            { t: "Say it", d: "Type what should happen, the way you'd tell a colleague. No flowchart homework.", c: "var(--color-signal)" },
-            { t: "Watch it assemble", d: "NodeWorm picks the apps, signs you in with one click each, and wires every step.", c: "var(--color-berry)" },
-            { t: "Forget about it", d: "It runs on autopilot, retries failures, survives crashes, and tells you if anything needs you.", c: "var(--color-teal)" },
-          ].map((s, i) => (
-            <div
-              key={s.t}
-              className="card card-pop p-6 rise"
-              style={{ animationDelay: `${i * 90}ms`, background: `linear-gradient(180deg, color-mix(in srgb, ${s.c} 8%, var(--color-card)), var(--color-card))` }}
-            >
-              <div className="font-display font-extrabold text-3xl mb-2" style={{ color: s.c }}>
-                {i + 1}
-              </div>
-              <div className="font-display font-bold text-xl">{s.t}</div>
-              <p className="mt-2 text-sm leading-snug" style={{ color: "var(--color-ink-soft)" }}>
-                {s.d}
-              </p>
+      {/* 01 How it works */}
+      <section style={{ padding: PAD }}>
+        <Kicker color="#ff5ea0">01 · How it works</Kicker>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 17, marginTop: 11.2 }}>
+          {STEPS.map((s) => (
+            <div key={s.n}>
+              <div style={{ fontWeight: 600, fontSize: 13, color: s.c }}>{s.n}</div>
+              <h4 style={{ margin: "6px 0 4px", fontSize: 20, fontWeight: 600, letterSpacing: "-0.015em" }}>{s.t}</h4>
+              <p className="nw-muted" style={{ fontSize: 14, margin: 0 }}>{s.d}</p>
             </div>
           ))}
         </div>
-      </Reveal>
+      </section>
 
-      {/* Stat band: honest numbers, popped in. */}
-      <Reveal as="section" className="py-10">
-        <div className="card overflow-hidden p-8 sm:p-10" style={{ background: "linear-gradient(120deg, color-mix(in srgb, var(--color-signal) 10%, var(--color-paper-2)), var(--color-paper-2))" }}>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 text-center">
-            {[
-              { n: "19", l: "ready-made connectors" },
-              { n: "ANY", l: "app, found live" },
-              { n: "8", l: "step types incl. AI" },
-              { n: "24/7", l: "self-healing runs" },
-            ].map((s, i) => (
-              <div key={s.l} className="stat-pop" style={{ animationDelay: `${i * 110}ms` }}>
-                <div className="font-display font-extrabold text-[2.6rem] leading-none gradient-text">{s.n}</div>
-                <div className="mt-2 text-xs uppercase tracking-wider" style={{ color: "var(--color-muted)" }}>
-                  {s.l}
-                </div>
-              </div>
-            ))}
-          </div>
+      {/* Stats */}
+      <section style={{ background: "radial-gradient(circle at 16% 28%, rgba(255,94,160,0.5), rgba(255,160,61,0.28) 38%, var(--nw-section) 72%)", padding: PAD }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 17 }}>
+          {STATS.map((s) => (
+            <div key={s.l}>
+              <div style={{ fontWeight: 500, fontSize: 42, color: s.c, textShadow: `0 0 24px rgba(${s.rgb},.6)`, lineHeight: 1.1 }}>{s.v}</div>
+              <p style={{ fontSize: 13, color: "var(--nw-n300)", marginTop: 6 }}>{s.l}</p>
+            </div>
+          ))}
         </div>
-      </Reveal>
+      </section>
 
-      {/* Popular automations, with real logos. */}
-      <Reveal as="section" className="py-12">
-        <div className="card overflow-hidden" style={{ background: "var(--color-paper-2)" }}>
-          <div className="p-6 sm:p-8 grid lg:grid-cols-[1fr_1.1fr] gap-8 items-center">
-            <div>
-              <H2 eyebrow="Start in one click">
-                Steal one of these<span className="gradient-text">.</span>
-              </H2>
-              <p className="text-base max-w-md" style={{ color: "var(--color-ink-soft)" }}>
-                The most popular automations, ready to go. Pick one, sign in to the two apps, done. Or type
-                something nobody has ever automated before; NodeWorm will figure it out.
-              </p>
-              <Link href="/flows" className="btn btn-signal text-sm mt-6 inline-flex">
-                Browse all templates →
+      {/* 02 The tackle box */}
+      <section style={{ padding: PAD }}>
+        <Kicker color="#38c6e8">02 · The tackle box</Kicker>
+        <h2 style={{ margin: "5.6px 0", maxWidth: 600, fontSize: 32, fontWeight: 600, letterSpacing: "-0.015em", lineHeight: 1.12 }}>Cast a worm. Catch any node.</h2>
+        <p style={{ maxWidth: 560, opacity: 0.75 }}>
+          Every app is a node. Every automation is a worm that hooks two of them together. Start from one that&apos;s
+          ready to go, or describe your own.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 11.2, marginTop: 17 }}>
+          {WORM_CARDS.map((w) => (
+            <div key={w.k} className="nw-card">
+              <div className="nw-card-kicker" style={{ color: w.c }}>{w.k}</div>
+              <div className="nw-card-title">{w.t}</div>
+              <p className="nw-card-body">{w.d}</p>
+              <Link href="/flows" className="nw-btn nw-btn-ghost" style={{ paddingInline: 0, justifyContent: "flex-start" }}>
+                Cast this worm <Arrow />
               </Link>
             </div>
-            <div className="grid sm:grid-cols-2 gap-2.5">
-              {WORMS.slice(0, 6).map((w, i) => (
-                <Link
-                  key={w.prompt}
-                  href="/flows"
-                  className="card p-3.5 flex items-center gap-2.5 rise transition-transform hover:-translate-y-1"
-                  style={{ background: "var(--color-paper)", animationDelay: `${i * 60}ms` }}
-                >
-                  <BrandLogo name={w.from} size={32} />
-                  <span style={{ color: "var(--color-signal)" }}>→</span>
-                  <BrandLogo name={w.to} size={32} />
-                  <span className="text-[0.8rem] leading-tight ml-1 font-medium" style={{ color: "var(--color-ink-soft)" }}>
-                    {w.trigger}, {w.action}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </div>
-      </Reveal>
-
-      {/* Why NodeWorm: the honest edge over the big names. */}
-      <Reveal as="section" className="py-12">
-        <H2 eyebrow="The honest comparison">Why not just use the big guys?</H2>
-        <div className="grid md:grid-cols-3 gap-4">
-          {[
-            { t: "They make you build. We build for you.", d: "Elsewhere you drag boxes and read docs. Here you describe the outcome and edit what appears.", c: "var(--color-signal)" },
-            { t: "They stop at their catalog. We don't.", d: "If an app isn't on the list, NodeWorm scouts its real surface live and builds the connection anyway.", c: "var(--color-aqua)" },
-            { t: "They shrug at failures. We don't.", d: "Runs pick up where they left off after crashes, retry with backoff, and never fake a success.", c: "var(--color-berry)" },
-          ].map((s, i) => (
-            <div key={s.t} className="card p-6 rise" style={{ animationDelay: `${i * 90}ms`, borderTop: `3px solid ${s.c}` }}>
-              <div className="font-display font-bold text-lg leading-snug">{s.t}</div>
-              <p className="mt-2 text-sm leading-snug" style={{ color: "var(--color-ink-soft)" }}>
-                {s.d}
-              </p>
-            </div>
           ))}
         </div>
-      </Reveal>
+        <Link href="/gallery" className="nw-btn nw-btn-secondary" style={{ marginTop: 17 }}>
+          Open the full gallery, {appCount}+ apps ↗
+        </Link>
+      </section>
 
-      {/* The five agents, softened: visual candy with plain words. */}
-      <Reveal as="section" className="py-12">
-        <H2 eyebrow="Meet the crew">Five little robots do the boring part</H2>
-        <div className="grid md:grid-cols-5 gap-3">
-          {AGENTS.map((a, i) => (
-            <div key={a.agent} className="relative">
-              {i < AGENTS.length - 1 && (
-                <span className="pipe-arrow hidden md:block absolute top-7 -right-2 z-10" style={{ color: "var(--color-line-2)", animationDelay: `${i}s` }}>
-                  <Connector />
-                </span>
-              )}
-              <div
-                className="card card-pop h-full p-5 rise"
-                style={{ animationDelay: `${i * 70}ms`, background: `linear-gradient(180deg, color-mix(in srgb, ${a.color} 9%, var(--color-card)), var(--color-card))` }}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <span className="font-display font-extrabold text-xl leading-none" style={{ color: a.color }}>
-                    {a.n}
+      <div className="nw-hr" style={{ marginInline: 90 }} />
+
+      {/* 03 Why NodeWorm */}
+      <section style={{ padding: PAD }}>
+        <Kicker color="#ffa03d">03 · Why NodeWorm</Kicker>
+        <h2 style={{ margin: "5.6px 0 0", maxWidth: 640, fontSize: 32, fontWeight: 600, letterSpacing: "-0.015em", lineHeight: 1.12 }}>
+          They make you build it. NodeWorm builds it for you.
+        </h2>
+        <table className="nw-table" style={{ marginTop: 17 }}>
+          <thead>
+            <tr>
+              <th>Everywhere else</th>
+              <th>NodeWorm</th>
+            </tr>
+          </thead>
+          <tbody>
+            {COMPARE.map((r) => (
+              <tr key={r.left}>
+                <td className="nw-muted">{r.left}</td>
+                <td>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <Check size={16} color="#a7d94b" />
+                    {r.right}
                   </span>
-                  <span className="dot stage-dot" style={{ background: a.color, color: a.color, width: 9, height: 9, animationDelay: `${i}s` }} />
-                </div>
-                <div className="font-display font-bold text-lg leading-none">{a.agent}</div>
-                <div className="text-[0.7rem] font-semibold mt-1 mb-3" style={{ color: a.color }}>
-                  {a.label}
-                </div>
-                <p className="text-sm leading-snug" style={{ color: "var(--color-ink-soft)" }}>
-                  {a.desc}
-                </p>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      {/* 04 Under the hood */}
+      <section style={{ padding: PAD }}>
+        <Kicker color="#b39cff">04 · Under the hood</Kicker>
+        <h2 style={{ margin: "5.6px 0 0", maxWidth: 640, fontSize: 32, fontWeight: 600, letterSpacing: "-0.015em", lineHeight: 1.12 }}>Five agents, one connection</h2>
+        <p style={{ maxWidth: 600, opacity: 0.75, marginTop: 5.6 }}>
+          Behind every automation, a small team of specialist agents does the work you&apos;d otherwise do by hand,
+          reading docs, weighing sign-in methods, testing that it actually works.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 8.4, marginTop: 17 }}>
+          {AGENTS.map((a) => {
+            const Icon = a.i;
+            return (
+              <div key={a.t} className="nw-card" style={{ gap: 6 }}>
+                <Icon size={20} color={a.c} />
+                <div className="nw-card-title" style={{ fontSize: 15 }}>{a.t}</div>
+                <p className="nw-card-body" style={{ fontSize: 12 }}>{a.d}</p>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
-      </Reveal>
+        <p className="nw-muted" style={{ fontSize: 13, marginTop: 11.2 }}>
+          Can&apos;t find a way in? NodeWorm says so, it never fakes a connection.
+        </p>
+      </section>
 
-      {/* Final CTA */}
-      <Reveal as="section" className="py-16">
-        <div
-          className="card overflow-hidden text-center px-6 py-14"
-          style={{ background: "linear-gradient(135deg, color-mix(in srgb, var(--color-signal) 14%, var(--color-paper-2)), color-mix(in srgb, var(--color-berry) 10%, var(--color-paper-2)))" }}
-        >
-          <h2 className="font-display font-extrabold text-[clamp(2rem,4.5vw,3.2rem)] leading-tight">
-            Stop doing your apps&apos; homework<span className="gradient-text">.</span>
-          </h2>
-          <p className="mt-3 text-base max-w-md mx-auto" style={{ color: "var(--color-ink-soft)" }}>
-            Describe one thing you do by hand every week. NodeWorm takes it from there.
-          </p>
-          <div className="mt-7 flex items-center justify-center gap-3 flex-wrap">
-            <Link href="/flows" className="btn btn-signal btn-shimmer text-base px-7 py-3.5">
-              Put it on autopilot →
-            </Link>
-            <Link href="/gallery" className="btn btn-ghost text-base px-6 py-3.5">
-              Browse the apps
-            </Link>
-          </div>
+      {/* Closing CTA */}
+      <section style={{ padding: "67px 90px" }}>
+        <h2 style={{ maxWidth: 600, fontSize: 32, fontWeight: 600, letterSpacing: "-0.015em", lineHeight: 1.12 }}>Stop doing your apps&apos; homework.</h2>
+        <p style={{ maxWidth: 480, opacity: 0.75 }}>
+          Describe the one thing you do by hand every week. NodeWorm takes it from there.
+        </p>
+        <div style={{ display: "flex", gap: 8.4, marginTop: 11.2, flexWrap: "wrap" }}>
+          <Link href="/flows" className="nw-btn nw-btn-primary">
+            Build it free <Arrow />
+          </Link>
+          <Link href="/gallery" className="nw-btn nw-btn-secondary">Browse the gallery</Link>
         </div>
-      </Reveal>
+      </section>
+
+      <footer style={{ padding: "17px 90px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 17, flexWrap: "wrap" }}>
+        <div>
+          <div className="nw-brand">nodeworm.</div>
+          <p className="nw-muted" style={{ fontSize: 12, margin: "2px 0 0" }}>Automation that builds itself.</p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 17 }}>
+          <Link href="/oss" className="nw-navlink nw-muted" style={{ fontSize: 12 }}>Open source</Link>
+          <p className="nw-muted" style={{ fontSize: 12, margin: 0 }}>Scout · Architect · Wire · Auditor · Relay</p>
+        </div>
+      </footer>
     </div>
-  );
-}
-
-function Connector() {
-  return (
-    <svg width="20" height="16" viewBox="0 0 20 16" fill="none" aria-hidden>
-      <path d="M1 8h15M12 4l5 4-5 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }

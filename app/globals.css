@@ -467,6 +467,235 @@ a {
   }
 }
 
+/* ── Night home (home-vibrant handoff) ─────────────────────────────────────
+   The landing page's dark vibrant theme, ported from the Claude Design
+   nocturne bundle. Scoped under .nw-night so the rest of the app keeps its
+   parchment system; class names are nw-prefixed to avoid collisions. */
+.nw-night {
+  --nw-bg: #161826;
+  --nw-surface: #232532;
+  --nw-text: #e9e9ed;
+  --nw-divider: color-mix(in srgb, #e9e9ed 16%, transparent);
+  --nw-n100: #f3f5fe;
+  --nw-n300: #cfd3e5;
+  --nw-n400: #b2b6ca;
+  --nw-n800: #3f424d;
+  --nw-n900: #292b31;
+  --nw-section: #262a60;
+  --nw-pink: #ff5ea0;
+  --nw-orange: #ffa03d;
+  --nw-yellow: #ffd23f;
+  --nw-cyan: #38c6e8;
+  --nw-lime: #a7d94b;
+  --nw-purple: #b39cff;
+  background: var(--nw-bg);
+  color: var(--nw-text);
+  font-size: 15px;
+  line-height: 1.55;
+}
+.nw-night ::selection {
+  background: color-mix(in srgb, var(--nw-pink) 30%, transparent);
+}
+.nw-night .nw-muted {
+  color: color-mix(in srgb, var(--nw-text) 55%, transparent);
+}
+.nw-night .nw-hr {
+  height: 2px;
+  border: 0;
+  background: linear-gradient(90deg, transparent, #eef1f5, #8b909b 50%, #eef1f5, transparent);
+  opacity: 0.35;
+}
+.nw-night .nw-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.2;
+  color: var(--nw-text);
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 8px 14px;
+  border-radius: 8px;
+  transition: transform 0.15s ease, filter 0.15s ease, background 0.15s ease;
+}
+.nw-night .nw-btn-primary {
+  background: linear-gradient(100deg, var(--nw-pink), var(--nw-orange));
+  color: #fff;
+}
+.nw-night .nw-btn-primary:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+.nw-night .nw-btn-secondary {
+  border-color: var(--nw-divider);
+}
+.nw-night .nw-btn-secondary:hover {
+  background: color-mix(in srgb, var(--nw-text) 7%, transparent);
+}
+.nw-night .nw-btn-ghost {
+  color: var(--nw-pink);
+  padding-inline: 2px;
+}
+.nw-night .nw-btn-ghost:hover {
+  background: color-mix(in srgb, var(--nw-pink) 10%, transparent);
+}
+.nw-night .nw-input {
+  min-height: 44px;
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--nw-text);
+  caret-color: var(--nw-pink);
+  background: var(--nw-surface);
+  border: 1px solid var(--nw-divider);
+  border-radius: 8px;
+  outline: none;
+}
+.nw-night .nw-input:hover {
+  border-color: color-mix(in srgb, var(--nw-text) 45%, transparent);
+}
+.nw-night .nw-input:focus-visible {
+  border-color: var(--nw-pink);
+}
+.nw-night .nw-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: var(--nw-n800);
+  color: var(--nw-n100);
+}
+.nw-night .nw-tag-outline {
+  background: transparent;
+  border: 1px solid var(--nw-orange);
+  color: var(--nw-pink);
+  text-decoration: none;
+}
+.nw-night .nw-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 10px;
+  background: var(--nw-surface);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.nw-night .nw-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 0 0 1px #595d6c, 0 6px 18px rgba(0, 0, 0, 0.55);
+}
+.nw-night .nw-card-kicker {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.nw-night .nw-card-title {
+  font-weight: 600;
+  font-size: 17px;
+  line-height: 1.2;
+  color: #fff;
+}
+.nw-night .nw-card-body {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.8;
+  flex: 1;
+}
+.nw-night .nw-elev {
+  box-shadow: 0 0 0 1px var(--nw-n800);
+}
+.nw-night .nw-h6 {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.nw-night .nw-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.nw-night .nw-table th {
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--nw-text) 60%, transparent);
+  padding: 8px;
+}
+.nw-night .nw-table td {
+  padding: 10px 8px;
+}
+.nw-night .nw-table thead tr,
+.nw-night .nw-table tbody tr {
+  background: linear-gradient(to right, transparent, color-mix(in srgb, var(--nw-text) 10%, transparent) 48px, color-mix(in srgb, var(--nw-text) 10%, transparent) calc(100% - 48px), transparent) no-repeat bottom / 100% 1px;
+}
+.nw-night .nw-navlink {
+  color: inherit;
+  text-decoration: none;
+  font-size: 14px;
+}
+.nw-night .nw-navlink:hover {
+  color: var(--nw-pink);
+}
+.nw-night .nw-brand {
+  font-weight: 700;
+  font-size: 18px;
+  background: linear-gradient(180deg, #ffffff, #cbd0d9 46%, #8b909b 56%, #f2f4f8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* The hero art is decorative and sized for the two-column desktop hero. Below
+   that the columns collapse and the viewBox would letterbox badly, so it goes. */
+@media (max-width: 900px) {
+  .nw-hero-art {
+    display: none;
+  }
+}
+/* The design's 90px gutters are desktop-scale; tighten them on small screens. */
+@media (max-width: 700px) {
+  .nw-night header,
+  .nw-night section,
+  .nw-night footer {
+    padding-left: 20px !important;
+    padding-right: 20px !important;
+  }
+  .nw-night .nw-hr {
+    margin-inline: 20px !important;
+  }
+}
+
+/* Night-home animations (from the handoff prototype, names preserved). */
+@keyframes nwGlowIn { from { opacity: 0; } to { opacity: 0.7; } }
+@keyframes nwBreathe { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+@keyframes nwGlowBreathe { 0%, 100% { opacity: 0.55; } 50% { opacity: 0.85; } }
+@keyframes nwFadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes nwSettle { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes nwBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+@keyframes nwTravel { 0%, 10% { offset-distance: 0%; } 45% { offset-distance: 100%; } 62% { offset-distance: 100%; } 100% { offset-distance: 0%; } }
+@keyframes nwLineCast { 0%, 10% { stroke-dashoffset: 1000; } 45% { stroke-dashoffset: 0; } 62% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 1000; } }
+@keyframes nwWordWiggle { 0%, 50% { transform: translate(0, 0) rotate(0deg); } 54% { transform: translate(11px, -8px) rotate(3.5deg); } 59% { transform: translate(3px, 4px) rotate(-2.5deg); } 64% { transform: translate(13px, -4px) rotate(3deg); } 69% { transform: translate(4px, 2px) rotate(-1.5deg); } 74% { transform: translate(8px, -3px) rotate(1.5deg); } 80% { transform: translate(2px, 1px) rotate(-0.6deg); } 86%, 100% { transform: translate(0, 0) rotate(0deg); } }
+@keyframes nwRodCast { 0% { transform: rotate(-4deg); } 12% { transform: rotate(-26deg); } 34% { transform: rotate(20deg); } 50% { transform: rotate(3deg); } 70% { transform: rotate(-4deg); } 100% { transform: rotate(-4deg); } }
+@keyframes nwType { 0% { width: 0; } 30% { width: 29ch; } 78% { width: 29ch; } 100% { width: 0; } }
+@keyframes nwCaret { 0%, 100% { border-color: #ff5ea0; } 50% { border-color: transparent; } }
+@keyframes nwSpark { 0%, 46% { opacity: 0; transform: scale(0); } 55% { opacity: 1; transform: scale(1); } 70% { opacity: 0; transform: scale(1.5); } 100% { opacity: 0; transform: scale(1.5); } }
+@keyframes nwPeek { 0%, 100% { transform: translateY(7px) rotate(0deg); } 50% { transform: translateY(-4px) rotate(-5deg); } }
+@media (prefers-reduced-motion: reduce) {
+  /* Every nw animation is decorative; kill them wholesale under reduced motion. */
+  .nw-night,
+  .nw-night * {
+    animation: none !important;
+  }
+}
+
 /* Flow showcase: a demo automation running on a loop. Each step lights up in its
    window of an 9s cycle; the tick pops as its step completes. */
 .demo-step {

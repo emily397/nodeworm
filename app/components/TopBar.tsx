@@ -17,6 +17,10 @@ export function TopBar() {
       .catch(() => setMode("heuristic"));
   }, []);
 
+  // The landing page ships its own dark nav (home-vibrant design); the parchment
+  // bar would clash sitting above it.
+  if (pathname === "/") return null;
+
   const nav = [
     { href: "/", label: "Launch" },
     { href: "/gallery", label: "Gallery" },
