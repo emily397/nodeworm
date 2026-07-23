@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { NODES, WORMS, CATEGORY_COLOR, CATEGORY_LABEL, type Node, type NodeCategory, type Worm } from "@/lib/catalog";
 import { BrandLogo } from "@/app/components/BrandLogo";
+import { GlowStats } from "@/app/components/PageHero";
+import { LogoCloud } from "@/app/components/LogoCloud";
 import { WormComposer } from "./WormComposer";
 
 export interface MyWorm {
@@ -107,6 +109,30 @@ export function Gallery({ myWorms = [], pieceNodes = [] }: { myWorms?: MyWorm[];
           <b style={{ color: "var(--color-ink)" }}>worm</b> that hooks two nodes together. Start from a ready-made worm
           below, or reel in any app from the pond. Not in the pond? Go fish, NodeWorm finds a way to land it.
         </p>
+      </section>
+
+      {/* Glowing counts, so the pond reads as big rather than as a list. */}
+      <section className="mb-12">
+        <div
+          className="card p-7 sm:p-8"
+          style={{ background: "linear-gradient(120deg, color-mix(in srgb, var(--color-teal) 12%, var(--color-paper-2)), var(--color-paper-2))" }}
+        >
+          <GlowStats
+            stats={[
+              { value: pond.length, label: "apps in the pond", color: "var(--color-teal)", rgb: "56,198,232" },
+              { value: pieceNodes.length, label: "ready to go, no setup", color: "var(--color-live)", rgb: "167,217,75" },
+              { value: WORMS.length, label: "ready-made automations", color: "var(--color-signal)", rgb: "255,94,160" },
+              { value: "Any", label: "app you can name, found live", color: "var(--color-amber)", rgb: "255,210,63" },
+            ]}
+          />
+        </div>
+      </section>
+
+      <section className="mb-14">
+        <p className="text-center text-xs uppercase tracking-[0.2em] mb-5" style={{ color: "var(--color-muted)" }}>
+          Hooked already, and hundreds more on request
+        </p>
+        <LogoCloud />
       </section>
 
       {err && (
