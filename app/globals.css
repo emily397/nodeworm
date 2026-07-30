@@ -992,7 +992,7 @@ input:focus-visible {
   position: relative;
   height: 2px;
   border-radius: 2px;
-  background: repeating-linear-gradient(90deg, #d3c6ad 0 6px, transparent 6px 11px);
+  background: repeating-linear-gradient(90deg, var(--color-line-2) 0 6px, transparent 6px 11px);
 }
 .livewire::before,
 .livewire::after {
