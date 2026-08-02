@@ -76,6 +76,7 @@ function sanitizeStep(v: unknown, i: number, insideBranch = false): FlowStep | n
     step.waitMs = Number.isFinite(w) && w > 0 ? Math.min(MAX_WAIT_MS, Math.floor(w)) : 60_000;
   }
   if (s.onError === "continue") step.onError = "continue";
+  if (s.encoding === "form" || s.encoding === "json") step.encoding = s.encoding;
   if (step.type === "branch" && Array.isArray(s.branches)) {
     step.branches = s.branches
       .map((b, bi): FlowBranch | null => {

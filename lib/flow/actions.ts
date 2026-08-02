@@ -12,6 +12,8 @@ export interface FlowAction {
   url?: string;
   summary?: string;
   bodyTemplate?: string;
+  // Set when the action's API takes a form-encoded body rather than JSON.
+  encoding?: "json" | "form";
 }
 
 function join(base: string, path: string): string {

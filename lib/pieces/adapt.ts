@@ -47,5 +47,6 @@ export function pieceActions(piece: PieceDefinition): FlowAction[] {
     url: join(piece.apiBase, a.path),
     summary: a.description,
     bodyTemplate: a.bodyKeys?.length ? JSON.stringify(Object.fromEntries(a.bodyKeys.map((k) => [k, ""]))) : undefined,
+    encoding: a.encoding ?? piece.encoding,
   }));
 }

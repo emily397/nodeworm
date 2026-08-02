@@ -6,6 +6,9 @@
 // See PLAN.md, Item 1 and Phase 1.
 
 import type { NodeCategory } from "../catalog";
+import type { ConnectionField } from "../flow/encode";
+
+export type { ConnectionField };
 
 export type PiecePropType = "text" | "number" | "checkbox" | "dropdown";
 
@@ -34,6 +37,8 @@ export interface PieceAction {
   method: string;
   path: string;
   bodyKeys?: string[];
+  // Overrides the piece default; some APIs take form-encoded bodies, not JSON.
+  encoding?: "json" | "form";
 }
 
 export type PieceTrigger =
@@ -44,12 +49,19 @@ export interface PieceDefinition {
   id: string; // stable slug, e.g. "hubspot"
   name: string; // display name, e.g. "HubSpot"
   category: NodeCategory;
-  apiBase: string; // absolute base the actions resolve against
+  // Absolute base the actions resolve against. May carry {key} placeholders that
+  // name a connectionField, for APIs on a per-tenant host (Shopify).
+  apiBase: string;
   auth: PieceAuth;
   props: PieceProp[];
   actions: PieceAction[];
   triggers: PieceTrigger[];
   upstream: PieceProvenance;
+  // Default body encoding for every action on this piece (default json).
+  encoding?: "json" | "form";
+  // Values collected ONCE per connection (a shop domain, an account id), not per
+  // step. Non-secret: secrets stay in the vault.
+  connectionFields?: ConnectionField[];
 }
 
 // Where a piece came from. Being precise matters legally: only "activepieces"

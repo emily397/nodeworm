@@ -16,10 +16,19 @@ const BRANCH_STEP_TYPES: FlowStepType[] = ["http", "ai", "filter", "webhook-out"
 const OPS: ConditionOp[] = ["eq", "neq", "contains", "exists", "gt", "lt"];
 
 // Per-connection action catalog (real discovered operations + live MCP tools).
+export interface ConnectionFieldState {
+  key: string;
+  label: string;
+  example: string;
+  help?: string;
+  value: string;
+}
+
 export interface Catalog {
   actions: FlowAction[];
   mcpTools: McpTool[];
   source: string;
+  connectionFields?: ConnectionFieldState[];
 }
 
 const CATALOG_SOURCE_LABEL: Record<string, string> = {
@@ -206,7 +215,7 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
       setCatalogs((c) => ({ ...c, [id]: { actions: [], mcpTools: [], source: "loading" } }));
       fetch(`/api/integrations/${id}/actions`)
         .then((r) => r.json())
-        .then((d) => setCatalogs((c) => ({ ...c, [id]: { actions: d.actions ?? [], mcpTools: d.mcpTools ?? [], source: d.source ?? "none" } })))
+        .then((d) => setCatalogs((c) => ({ ...c, [id]: { actions: d.actions ?? [], mcpTools: d.mcpTools ?? [], source: d.source ?? "none", connectionFields: d.connectionFields ?? [] } })))
         .catch(() => setCatalogs((c) => ({ ...c, [id]: { actions: [], mcpTools: [], source: "none" } })));
     }
   }, [flow.steps, catalogs]);
@@ -724,6 +733,48 @@ export function FlowBuilder({ initial, initialRuns }: { initial: Flow; initialRu
   );
 }
 
+// Some apps live on a per-tenant address (your own Shopify store), so the app
+// asks once per account rather than on every step.
+function ConnectionSettings({ integrationId, fields }: { integrationId: string; fields: ConnectionFieldState[] }) {
+  const [vals, setVals] = useState<Record<string, string>>(() => Object.fromEntries(fields.map((f) => [f.key, f.value])));
+  const [state, setState] = useState<"idle" | "saving" | "saved">("idle");
+  const missing = fields.some((f) => !vals[f.key]?.trim());
+
+  async function save() {
+    setState("saving");
+    await fetch(`/api/integrations/${integrationId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ connectionConfig: vals }),
+    }).catch(() => {});
+    setState("saved");
+    setTimeout(() => setState("idle"), 1800);
+  }
+
+  return (
+    <div className="mt-2.5 rounded-xl px-3 py-2.5" style={{ border: `1px dashed ${missing ? "color-mix(in srgb, var(--color-amber) 55%, transparent)" : "var(--color-line-2)"}` }}>
+      {fields.map((f) => (
+        <label key={f.key} className="block mb-2 last:mb-0">
+          <span className="text-[0.66rem] uppercase tracking-wider" style={{ color: "var(--color-muted)" }}>
+            your {f.label}
+          </span>
+          <input
+            value={vals[f.key] ?? ""}
+            onChange={(e) => setVals((v) => ({ ...v, [f.key]: e.target.value }))}
+            onBlur={save}
+            placeholder={f.example}
+            className="w-full mt-1 rounded-lg px-3 py-2 text-sm outline-none"
+            style={inputStyle}
+          />
+        </label>
+      ))}
+      <p className="text-[0.68rem] mt-1" style={{ color: missing ? "var(--color-amber)" : "var(--color-muted)" }}>
+        {state === "saving" ? "saving..." : state === "saved" ? "Saved for this account." : missing ? "Needed before this step can run." : "Saved for this account."}
+      </p>
+    </div>
+  );
+}
+
 function StepCard({
   step,
   index,
@@ -760,7 +811,7 @@ function StepCard({
   function applyAction(name: string) {
     const a = catalog?.actions.find((x) => x.name === name);
     if (!a) return;
-    onChange({ name: a.summary || a.name, method: a.method, url: a.url ?? step.url, body: a.bodyTemplate ?? step.body });
+    onChange({ name: a.summary || a.name, method: a.method, url: a.url ?? step.url, body: a.bodyTemplate ?? step.body, encoding: a.encoding });
   }
 
   function patchBranch(bid: string, p: Partial<FlowBranch>) {
@@ -829,6 +880,9 @@ function StepCard({
                 <button onClick={() => setShowAllConns(true)} className="text-[0.7rem] mt-1.5" style={{ color: "var(--color-muted)" }}>
                   Show all accounts
                 </button>
+              )}
+              {step.integrationId && (catalog?.connectionFields?.length ?? 0) > 0 && (
+                <ConnectionSettings integrationId={step.integrationId} fields={catalog!.connectionFields!} />
               )}
             </div>
           )}
@@ -1019,6 +1073,17 @@ function StepCard({
                         {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => (
                           <option key={m}>{m}</option>
                         ))}
+                      </select>
+                    </Field>
+                    <Field label="send as">
+                      <select
+                        value={step.encoding ?? "json"}
+                        onChange={(e) => onChange({ encoding: e.target.value === "form" ? "form" : "json" })}
+                        className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                        style={inputStyle}
+                      >
+                        <option value="json">JSON (most apps)</option>
+                        <option value="form">Form fields (Stripe and similar)</option>
                       </select>
                     </Field>
                     <div className="sm:col-span-2">

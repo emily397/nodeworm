@@ -37,5 +37,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
   }
 
-  return NextResponse.json({ actions, mcpTools, source: surface.specSource, apiBase });
+  // Per-connection settings a piece needs before its actions can run (a shop
+  // domain). Surfaced so the builder can ask for them inline.
+  const connectionFields = (piece?.connectionFields ?? []).map((f) => ({ ...f, value: it.connectionConfig?.[f.key] ?? "" }));
+
+  return NextResponse.json({ actions, mcpTools, source: surface.specSource, apiBase, connectionFields });
 }

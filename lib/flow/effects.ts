@@ -8,6 +8,8 @@ import { clientCreds, providerFor, refreshAccessToken } from "../engine/oauth";
 import { shouldRefresh } from "../engine/refresh";
 import type { Integration } from "../engine/types";
 import { getVaultConnector, getVaultTokens, storeTokens } from "../engine/vault";
+import { pieceFor } from "../pieces/registry";
+import { resolveConnectionFields, toFormBody, type BodyEncoding } from "./encode";
 import { mcpEnvelope, parseMcpHttpBody, parseMcpResult } from "./mcp";
 import type { EffectInput, EffectResult, StepEffects } from "./run";
 import type { FlowStep } from "./types";
@@ -18,14 +20,21 @@ const MAX_BODY = 64 * 1024;
 const AI_SYSTEM = `You are one step inside a NodeWorm flow automation. Follow the step's instruction against the data it contains.
 Respond with ONLY one minified JSON object: {"result": <string, object or array>}. No markdown, no commentary.`;
 
-async function call(url: string, method: string, body: unknown, headers: Record<string, string>): Promise<EffectResult & { status: number }> {
+async function call(
+  url: string,
+  method: string,
+  body: unknown,
+  headers: Record<string, string>,
+  encoding: BodyEncoding = "json",
+): Promise<EffectResult & { status: number }> {
   const host = new URL(url).host;
+  const form = encoding === "form";
   let res: Response;
   try {
     res = await fetch(url, {
       method,
-      headers: { "content-type": "application/json", ...headers },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers: { "content-type": form ? "application/x-www-form-urlencoded" : "application/json", ...headers },
+      body: body === undefined ? undefined : form ? toFormBody(body) : JSON.stringify(body),
       redirect: "manual",
       cache: "no-store",
       signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -74,14 +83,27 @@ export function realEffects(getIntegration: (id: string) => Promise<Integration 
 
   async function httpLike(step: FlowStep, input: EffectInput, withAuth: boolean): Promise<EffectResult> {
     if (!input.url) return { ok: false, summary: "no URL configured on this step" };
-    const blocked = await guard(input.url);
-    if (blocked) return { ok: false, summary: blocked };
+
     const headers: Record<string, string> = {};
     let authed: { it: Integration; refreshToken?: string } | null = null;
+    let url = input.url;
+    let encoding: BodyEncoding = step.encoding ?? "json";
+
     if (withAuth) {
       const { it, fail } = await connection(step);
       if (fail) return { ok: false, summary: fail };
       if (it) {
+        // A per-tenant API (Shopify) keeps its host on the connection, not the
+        // step. Resolve those placeholders before anything touches the network.
+        const piece = pieceFor(it.appName);
+        if (piece) {
+          if (!step.encoding && piece.encoding) encoding = piece.encoding;
+          const r = resolveConnectionFields(url, piece.connectionFields ?? [], it.connectionConfig);
+          if (r.missing.length) {
+            return { ok: false, summary: `${it.appName} needs your ${r.missing.join(" and ")}; add it on the connection` };
+          }
+          url = r.url;
+        }
         const tokens = await getVaultTokens(it.appName, { connectionId: it.id, userId: it.userId });
         if (!tokens) return { ok: false, summary: `no stored token for ${it.appName}; reconnect it first` };
         headers.authorization = `Bearer ${tokens.accessToken}`;
@@ -89,7 +111,10 @@ export function realEffects(getIntegration: (id: string) => Promise<Integration 
       }
     }
 
-    const first = await call(input.url, input.method ?? "POST", input.body, headers);
+    const blocked = await guard(url);
+    if (blocked) return { ok: false, summary: blocked };
+
+    const first = await call(url, input.method ?? "POST", input.body, headers, encoding);
     // Reactive refresh: an expired access token shows up as a 401/403. Renew once
     // with the stored refresh token and retry, so long-lived connections stop dying
     // silently. Without a refresh token we say so honestly rather than loop.
@@ -98,7 +123,7 @@ export function realEffects(getIntegration: (id: string) => Promise<Integration 
       if (!fresh) {
         return { ...first, summary: `${authed.it.appName} rejected the saved login and it could not be renewed; reconnect it` };
       }
-      return call(input.url, input.method ?? "POST", input.body, { ...headers, authorization: `Bearer ${fresh}` });
+      return call(url, input.method ?? "POST", input.body, { ...headers, authorization: `Bearer ${fresh}` }, encoding);
     }
     return first;
   }

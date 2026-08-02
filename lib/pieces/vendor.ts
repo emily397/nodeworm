@@ -3,16 +3,54 @@
 // third-party licence or attribution attaches (contrast hubspot.ts, which IS
 // adapted from Activepieces MIT source and carries its notice and pinned commit).
 //
-// Scope rule: only JSON APIs with a CONCRETE base URL belong here. The flow http
-// step sends application/json, so form-encoded APIs (Stripe) are excluded, as are
-// per-tenant templated hosts (Shopify, Mailchimp) until the step model carries a
-// per-connection base. Both are noted in PLAN.md rather than half-supported.
+// Form-encoded APIs (Stripe) and per-tenant hosts (Shopify) are supported now
+// that a piece can declare `encoding` and `connectionFields`; the earlier
+// exclusion note no longer applies.
 
 import type { PieceDefinition } from "./types";
 
 const docs = (docsUrl: string) => ({ origin: "vendor-docs" as const, docsUrl });
 
 export const VENDOR_PIECES: PieceDefinition[] = [
+  {
+    id: "stripe",
+    name: "Stripe",
+    category: "finance",
+    apiBase: "https://api.stripe.com/v1",
+    // Stripe's API is form-encoded, with bracket notation for nested values.
+    encoding: "form",
+    auth: { type: "oauth2", authorizeUrl: "https://connect.stripe.com/oauth/authorize", tokenUrl: "https://connect.stripe.com/oauth/token", scopes: ["read_write"], scopeSep: " " },
+    props: [{ key: "amount", label: "Amount in cents", type: "number" }],
+    actions: [
+      { key: "create_customer", name: "Create a customer", description: "Add a customer", method: "post", path: "/customers", bodyKeys: ["email", "name"] },
+      { key: "list_customers", name: "Find customers", description: "List customers", method: "get", path: "/customers" },
+      { key: "create_payment_link", name: "Create a payment link", description: "Generate a shareable payment link", method: "post", path: "/payment_links", bodyKeys: ["line_items"] },
+      { key: "create_invoice", name: "Create an invoice", description: "Draft an invoice for a customer", method: "post", path: "/invoices", bodyKeys: ["customer", "collection_method"] },
+      { key: "refund", name: "Refund a payment", description: "Refund a payment intent or charge", method: "post", path: "/refunds", bodyKeys: ["payment_intent", "amount"] },
+      { key: "list_charges", name: "List payments", description: "List recent charges", method: "get", path: "/charges" },
+    ],
+    triggers: [{ key: "payment_succeeded", name: "Payment succeeded", type: "webhook", event: "payment_intent.succeeded" }],
+    upstream: docs("https://docs.stripe.com/api"),
+  },
+  {
+    id: "shopify",
+    name: "Shopify",
+    category: "commerce",
+    // Per-tenant host: {shop} is filled from the connection, not the step.
+    apiBase: "https://{shop}/admin/api/2024-01",
+    connectionFields: [{ key: "shop", label: "shop domain", example: "acme.myshopify.com", help: "The myshopify.com domain of your store." }],
+    auth: { type: "oauth2", authorizeUrl: "https://{shop}/admin/oauth/authorize", tokenUrl: "https://{shop}/admin/oauth/access_token", scopes: ["read_orders", "write_orders", "read_products"], scopeSep: "," },
+    props: [],
+    actions: [
+      { key: "list_orders", name: "List orders", description: "List recent orders", method: "get", path: "/orders.json" },
+      { key: "get_order", name: "Get an order", description: "Fetch one order by id", method: "get", path: "/orders/{orderId}.json" },
+      { key: "list_products", name: "List products", description: "List products", method: "get", path: "/products.json" },
+      { key: "create_product", name: "Create a product", description: "Add a product", method: "post", path: "/products.json", bodyKeys: ["product"] },
+      { key: "list_customers", name: "List customers", description: "List customers", method: "get", path: "/customers.json" },
+    ],
+    triggers: [{ key: "new_order", name: "New order", type: "polling", itemsPath: "orders", idPath: "id" }],
+    upstream: docs("https://shopify.dev/docs/api/admin-rest"),
+  },
   {
     id: "slack",
     name: "Slack",

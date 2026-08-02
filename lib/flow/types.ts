@@ -65,6 +65,8 @@ export interface FlowStep {
   retries?: number;
   onError?: "halt" | "continue";
   waitMs?: number; // wait: park the run and resume after this delay
+  // How the body is sent. Defaults to JSON; "form" is what Stripe-style APIs take.
+  encoding?: "json" | "form";
 }
 
 export interface FlowBranch {

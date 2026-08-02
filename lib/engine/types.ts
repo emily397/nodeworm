@@ -469,6 +469,10 @@ export interface Integration {
   // with a bounded event log. Present once inbound webhooks are enabled. The token is
   // server-only (redacted before the client) but travels in the registered URL.
   inbound?: InboundConfig;
+  // Non-secret per-connection values a piece declares as connectionFields (a shop
+  // domain, an account id). Substituted into the API base at execution time so a
+  // per-tenant host resolves. Secrets never live here; they stay in the vault.
+  connectionConfig?: Record<string, string>;
 }
 
 // ---- Generated connector (generated-mcp / generated-scraper) ---------------
