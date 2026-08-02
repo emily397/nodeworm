@@ -55,3 +55,15 @@ from the real release assets, never fabricated), with an `archive: "tgz"` +
 would violate the "spawn only bundled binaries" invariant) and re-extracts from the
 pin-verified archive before every spawn. Extraction verified against both real
 artifacts (valid Mach-O output).
+
+## 2026-08-02 - RPA / automation node libraries - CLEARED STACK
+When adding browser/desktop RPA action nodes, use only licence-cleared libraries so
+NodeWorm stays resellable in closed white-label builds. Cleared (all embed-and-resell
+safe, verified at source 2026-08-02): Playwright (Apache-2.0, browser+form), PyAutoGUI
+(BSD-3, desktop mouse/keyboard/screen), Tesseract (Apache-2.0, OCR), OpenCV (Apache-2.0,
+on-screen template-match+click). Do NOT reach for the obvious Node-native desktop option
+nut.js: it left Apache-2.0 for a source-available + reseller-licence EULA in May 2024, so
+embedding it in a closed product needs a paid reseller licence. Also avoid RobotJS (MIT
+but abandoned, native builds break on modern Node) and UI.Vision (AGPL core + proprietary
+XModules). Re-verify any automation dep at the pinned version, not by reputation. Full
+verdicts: oss-commercial-library/docs/automation-libraries.md.
