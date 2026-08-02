@@ -12,6 +12,9 @@ export interface EffectInput {
   path?: string;
   body?: unknown;
   prompt?: string;
+  to?: string;
+  subject?: string;
+  text?: string;
 }
 
 export interface EffectResult {
@@ -26,6 +29,7 @@ export interface StepEffects {
   ai(step: FlowStep, input: EffectInput): Promise<EffectResult>;
   webhookOut(step: FlowStep, input: EffectInput): Promise<EffectResult>;
   mcp(step: FlowStep, input: EffectInput): Promise<EffectResult>;
+  email(step: FlowStep, input: EffectInput): Promise<EffectResult>;
 }
 
 export interface TriggerFire {
@@ -78,6 +82,13 @@ function renderInput(step: FlowStep, ctx: Record<string, unknown>): EffectInput 
   if (step.path) input.path = asText(renderValue(step.path, ctx));
   if (step.method) input.method = step.method;
   if (step.prompt) input.prompt = asText(renderValue(step.prompt, ctx));
+  if (step.to) input.to = asText(renderValue(step.to, ctx));
+  if (step.subject) input.subject = asText(renderValue(step.subject, ctx));
+  // An email's message lives in `body` as free text, not as a JSON template.
+  if (step.type === "email") {
+    if (step.body) input.text = asText(renderValue(step.body, ctx));
+    return input;
+  }
   if (step.body) input.body = renderJson(step.body, ctx);
   return input;
 }
@@ -257,6 +268,8 @@ function pick(effects: StepEffects, step: FlowStep) {
       return effects.webhookOut;
     case "mcp":
       return effects.mcp;
+    case "email":
+      return effects.email;
     default:
       return effects.http;
   }

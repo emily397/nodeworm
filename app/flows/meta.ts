@@ -12,6 +12,7 @@ export const STEP_COLORS: Record<FlowStepType, string> = {
   mcp: "var(--color-teal)",
   branch: "var(--color-live)",
   wait: "var(--color-muted)",
+  email: "var(--color-berry)",
 };
 
 // Plain-language labels shown to everyone. The technical shape (http vs mcp vs
@@ -26,6 +27,7 @@ export const STEP_LABELS: Record<FlowStepType, string> = {
   mcp: "Run an app tool",
   branch: "Split into paths",
   wait: "Wait",
+  email: "Send an email",
 };
 
 export const STEP_BLURBS: Record<FlowStepType, string> = {
@@ -37,10 +39,11 @@ export const STEP_BLURBS: Record<FlowStepType, string> = {
   mcp: "Call a ready-made tool on a connected app (advanced)",
   branch: "Take different paths depending on the data",
   wait: "Pause, then carry on later",
+  email: "Email anyone, with details filled in from the run",
 };
 
 // Steps a non-technical person sees first; the rest live behind "More step types".
-export const PRIMARY_STEP_TYPES: FlowStepType[] = ["http", "ai", "filter", "branch", "wait"];
+export const PRIMARY_STEP_TYPES: FlowStepType[] = ["http", "email", "ai", "filter", "branch", "wait"];
 export const ADVANCED_STEP_TYPES: FlowStepType[] = ["mcp", "connector", "webhook-out"];
 
 export const TRIGGER_LABEL: Record<FlowTriggerType, string> = {

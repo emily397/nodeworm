@@ -1021,6 +1021,44 @@ function StepCard({
             </>
           )}
 
+          {step.type === "email" && (
+            <>
+              <Field label="send to">
+                <input
+                  value={step.to ?? ""}
+                  onChange={(e) => onChange({ to: e.target.value })}
+                  placeholder="you@company.com, or {{trigger.email}}"
+                  className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                  style={inputStyle}
+                />
+              </Field>
+              <Field label="subject">
+                <input
+                  value={step.subject ?? ""}
+                  onChange={(e) => onChange({ subject: e.target.value })}
+                  placeholder="New order from {{trigger.name}}"
+                  className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                  style={inputStyle}
+                />
+              </Field>
+              <div className="sm:col-span-2">
+                <Field label="message">
+                  <textarea
+                    value={step.body ?? ""}
+                    onChange={(e) => onChange({ body: e.target.value })}
+                    rows={4}
+                    placeholder={"Hi,\n\nA new order just came in for {{trigger.amount}}."}
+                    className="w-full rounded-lg px-3 py-2 text-sm outline-none resize-y"
+                    style={inputStyle}
+                  />
+                </Field>
+                <p className="text-[0.7rem] mt-1" style={{ color: "var(--color-muted)" }}>
+                  Plain text. Pull in anything from the run with {"{{trigger.something}}"}.
+                </p>
+              </div>
+            </>
+          )}
+
           {step.type === "wait" && (
             <Field label="pause for">
               <select

@@ -20,7 +20,7 @@ function okEffects(calls: Array<{ type: string; input: unknown }> = []): StepEff
     calls.push({ type, input });
     return { ok: true, summary: `${type} ok`, output: { echoed: input } };
   };
-  return { http: record("http"), connector: record("connector"), ai: record("ai"), webhookOut: record("webhook-out"), mcp: record("mcp") };
+  return { http: record("http"), connector: record("connector"), ai: record("ai"), webhookOut: record("webhook-out"), mcp: record("mcp"), email: record("email") };
 }
 
 describe("executeFlow", () => {

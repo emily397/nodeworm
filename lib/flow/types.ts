@@ -33,7 +33,7 @@ export interface FlowTrigger {
   };
 }
 
-export type FlowStepType = "http" | "connector" | "ai" | "filter" | "webhook-out" | "mcp" | "branch" | "wait";
+export type FlowStepType = "http" | "connector" | "ai" | "filter" | "webhook-out" | "mcp" | "branch" | "wait" | "email";
 
 export type ConditionOp = "eq" | "neq" | "contains" | "exists" | "gt" | "lt";
 
@@ -67,6 +67,9 @@ export interface FlowStep {
   waitMs?: number; // wait: park the run and resume after this delay
   // How the body is sent. Defaults to JSON; "form" is what Stripe-style APIs take.
   encoding?: "json" | "form";
+  // email: all templated.
+  to?: string;
+  subject?: string;
 }
 
 export interface FlowBranch {

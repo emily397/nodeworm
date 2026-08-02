@@ -174,14 +174,22 @@ Pieces 2..N scale-up gated on Phase 1's per-piece number, plus a first-class ema
 
 ---
 
+## Buildable-items pass (executed 2026-07-31)
+
+**Both step-model gaps closed, Stripe and Shopify shipped (19 to 21 connectors).** A piece or action can now declare `encoding: "form"` (Stripe-style `application/x-www-form-urlencoded` with bracket notation for nested values), and a piece can declare `connectionFields`: non-secret values collected once per connection and substituted into `{placeholders}` in the API base, which is what a per-tenant host like Shopify needs. Placeholders a piece did not declare are untouched, so existing connectors are unaffected. Config is saved through a PATCH that only accepts declared keys; secrets stay in the vault. Verified on the wire against an echo endpoint (`metadata[order_id]=A1`, correct content-type, `+` escaped) and by a Shopify step failing before any network call with "needs your shop domain", then advancing to the auth boundary once set.
+
+**Email step DONE, provider-agnostic.** The blocker was a provider decision, so the step was built to work with either: set `EMAIL_PROVIDER` to `resend` or `listmonk` plus that provider's credentials and `EMAIL_FROM`, and "email me" flows work. listmonk stays HTTP-API only (AGPL, separate service, never linked in). No provider SDK is bundled. Verified end to end against an echo endpoint: correct endpoint, correct Basic auth, and all three templated fields rendered from the trigger. Unconfigured it fails honestly ("email is not set up on this account yet") rather than silently dropping mail, and an unresolved recipient is caught before sending. The daily-digest template now uses it.
+
+**SES not included:** it needs AWS SigV4 request signing, which cannot be verified without live credentials, so shipping it unverified would be guesswork. Resend or listmonk covers the need today; SES is a contained follow-up if AWS is preferred.
+
 ## Needs Emily (blocked on credentials or a decision, not on code)
 
 1. **Connect a real account to prove an authenticated call.** Everything up to the auth boundary is verified; no live third-party write has been executed. Connect any built-in connector (HubSpot, Slack, Notion) via OAuth and run a flow step to close that loop.
 2. **GlitchTip DSN.** Set `GLITCHTIP_DSN` in Vercel production to turn error capture on. Inert and unit-tested until then.
 3. **LiteLLM instance.** Set `LLM_GATEWAY_URL` and `LLM_GATEWAY_KEY` to route AI steps through the gateway with per-customer spend caps. Direct cascade continues to work unchanged until then.
 4. **Uptime Kuma push URL.** Paste a per-flow monitor URL into a scheduled flow ("Alert me if this stops running") to arm dead-flow alerting. The ping path is verified; only the monitor endpoint is missing.
-5. **Email step decision.** No email step exists. Choose listmonk (needs an instance, AGPL so HTTP API only) or SES (needs AWS credentials), and it gets built as a first-class step. Until then "email me" flows need a manually configured http step.
-6. **Stripe and Shopify connectors** need the two step-model gaps above (form encoding, per-connection base URL) before they can ship as built-ins. Say the word and they are a small follow-up.
+5. **Email credentials.** The step is built and waiting on one env set in Vercel: either `EMAIL_PROVIDER=resend` plus `RESEND_API_KEY`, or `EMAIL_PROVIDER=listmonk` plus `LISTMONK_URL`, `LISTMONK_USER` and `LISTMONK_PASSWORD`. Both also need `EMAIL_FROM` on a domain you have verified with the provider. Inert and honest until then.
+6. **Stripe and Shopify are shipped.** Stripe needs the usual OAuth connect; Shopify additionally asks for your `.myshopify.com` domain once on the connection (the builder prompts inline).
 
 ## Risk register (top 5)
 

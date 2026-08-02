@@ -9,6 +9,7 @@ import { shouldRefresh } from "../engine/refresh";
 import type { Integration } from "../engine/types";
 import { getVaultConnector, getVaultTokens, storeTokens } from "../engine/vault";
 import { pieceFor } from "../pieces/registry";
+import { buildEmailRequest } from "./email";
 import { resolveConnectionFields, toFormBody, type BodyEncoding } from "./encode";
 import { mcpEnvelope, parseMcpHttpBody, parseMcpResult } from "./mcp";
 import type { EffectInput, EffectResult, StepEffects } from "./run";
@@ -144,6 +145,17 @@ export function realEffects(getIntegration: (id: string) => Promise<Integration 
       const headers: Record<string, string> = {};
       if (conn.token) headers.authorization = /^(Bearer|Basic) /.test(conn.token) ? conn.token : `Bearer ${conn.token}`;
       return call(target, input.method ?? "POST", input.body, headers);
+    },
+
+    async email(step, input) {
+      if (!input.to) return { ok: false, summary: "who should this email go to?" };
+      const built = buildEmailRequest({ to: input.to, subject: input.subject ?? "", body: input.text ?? "" });
+      if ("error" in built) return { ok: false, summary: built.error };
+      const blocked = await guard(built.url);
+      if (blocked) return { ok: false, summary: blocked };
+      const res = await call(built.url, "POST", built.body, built.headers);
+      if (!res.ok) return { ...res, summary: `could not send the email (${res.summary})` };
+      return { ok: true, summary: `emailed ${input.to}`, output: res.output };
     },
 
     async ai(step, input) {

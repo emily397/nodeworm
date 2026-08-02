@@ -4,7 +4,7 @@
 
 import type { Flow, FlowBranch, FlowCondition, FlowStep, FlowStepType, FlowTrigger } from "./types";
 
-const STEP_TYPES: FlowStepType[] = ["http", "connector", "ai", "filter", "webhook-out", "mcp", "branch", "wait"];
+const STEP_TYPES: FlowStepType[] = ["http", "connector", "ai", "filter", "webhook-out", "mcp", "branch", "wait", "email"];
 export const MAX_WAIT_MS = 7 * 24 * 60 * 60 * 1000; // a week is plenty; keeps a typo from parking a run forever
 const OPS = new Set(["eq", "neq", "contains", "exists", "gt", "lt"]);
 export const MAX_STEPS = 20;
@@ -67,6 +67,8 @@ function sanitizeStep(v: unknown, i: number, insideBranch = false): FlowStep | n
     body: typeof s.body === "string" ? s.body : undefined,
     prompt: typeof s.prompt === "string" ? s.prompt : undefined,
     tool: str(s.tool),
+    to: str(s.to),
+    subject: typeof s.subject === "string" ? s.subject.slice(0, 300) : undefined,
   };
   step.condition = sanitizeCondition(s.condition);
   const retries = Number(s.retries);

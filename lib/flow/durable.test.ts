@@ -13,7 +13,7 @@ function effects(seen: string[] = []): StepEffects {
     seen.push(step.id);
     return { ok: true, summary: "ok", output: { echoed: input, from: step.id } };
   };
-  return { http: rec(), connector: rec(), ai: rec(), webhookOut: rec(), mcp: rec() };
+  return { http: rec(), connector: rec(), ai: rec(), webhookOut: rec(), mcp: rec(), email: rec() };
 }
 
 describe("wait step", () => {

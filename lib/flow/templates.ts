@@ -33,7 +33,7 @@ export const TEMPLATES: FlowTemplate[] = [
     steps: [
       { id: "pull", type: "http", name: "Pull yesterday's records", method: "GET" },
       { id: "sum", type: "ai", name: "Summarise", prompt: "Write a crisp 3-line digest of these records: {{steps.pull.output}}" },
-      { id: "post", type: "webhook-out", name: "Deliver the digest", method: "POST", body: '{"text":"{{steps.sum.output}}"}' },
+      { id: "post", type: "email", name: "Email me the digest", subject: "Your daily digest", body: "{{steps.sum.output}}" },
     ],
   },
   {
